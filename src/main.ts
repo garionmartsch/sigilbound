@@ -4,6 +4,7 @@ import { ELEM, ELEM_ORDER } from './data';
 import { drawMap } from './map';
 import { drawMonster } from './render';
 import { current, show } from './screens';
+import { initSettings, isPaused } from './settings';
 import { initSound } from './sfx';
 import { initTutorial, tutorialFrame } from './tutorial';
 import { EFFECT_TEXT } from './status';
@@ -32,7 +33,7 @@ let last = performance.now();
 function loop(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now; clock.t += dt;
-  if (current === 'battle' && B) { updateBattle(dt); if (B) { drawBattle(); updateHud(); } }
+  if (current === 'battle' && B) { if (!isPaused()) updateBattle(dt); if (B) { drawBattle(); updateHud(); } }
   if (current === 'altar') drawAltar(dt);
   if (current === 'forge') drawForge(dt);
   if (current === 'map') drawMap(dt);
@@ -47,6 +48,7 @@ $('#elemT').innerHTML = '<tr><th>Element</th><th>Strong vs</th><th>Weak to</th><
   return `<tr><td><span class="chip ${k}">${ELEM[k].name}</span></td><td>${ELEM[k].beats.map(b => ELEM[b].name).join(', ')}</td><td>${weak.map(b => ELEM[b].name).join(', ')}</td><td>${EFFECT_TEXT[k]}</td></tr>`;
 }).join('');
 initSound();
+initSettings();
 show('home');
 initTutorial();
 requestAnimationFrame(loop);

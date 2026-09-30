@@ -74,7 +74,10 @@ src/
   render.ts         Beast drawing: image art and the code-drawn bodies
   ui.ts             Cards screen, summoning altar, enhance and evolve
   screens.ts        Switching screens, home screen
-  sfx.ts            Synthesized sounds, vibration, sound settings
+  sfx.ts            Synthesized sounds and vibration
+  settings.ts       The settings menu (gear on home, Pause in battle)
+  settingsCore.ts   Settings, defaults, what each one does, save codes (no page access, tested)
+  prefs.ts          This device's live settings, loaded at start
   util.ts           Small shared helpers: DOM lookup, math, colors
   styles.css        All styling
 public/art/         Beast art as <beast>_<form>.webp (0 base, 1 evolved, 2 final)
@@ -116,11 +119,19 @@ A beast without art falls back to its code-drawn version, so art can be added on
 
 ## Saves
 
-Progress is stored in the browser's local storage under `sigilbound-save-v2`, including campaign stars, opened chests and story seen. Saves from before the campaign had a single stage number; they're converted to that many cleared stages along the trail, with one star each. Saves from older versions are upgraded automatically by `migrate` in `src/save.ts`. **Reset progress** on the home screen wipes the save. Tutorial progress is saved too; saves from before the tutorial existed skip it, and **Replay tutorial** on the home screen starts it again.
+Progress is stored in the browser's local storage under `sigilbound-save-v2`, including campaign stars, opened chests and story seen. Saves from before the campaign had a single stage number; they're converted to that many cleared stages along the trail, with one star each. Saves from older versions are upgraded automatically by `migrate` in `src/save.ts`. Tutorial progress is saved too; saves from before the tutorial existed skip it.
+
+The settings menu (gear on the home screen) can **copy a save code** to move progress to another device, **load a save code**, **replay the tutorial** and **reset progress**. Loading and resetting both ask for a second tap. A save code is the save as base64 JSON with a `SIGIL1:` prefix; loading one runs it through `migrate` like any other save.
+
+## Settings
+
+Settings belong to the device, not the save, so resetting progress keeps them. They're stored under `sigilbound-settings`: sound on/off and volume, vibration strength, swipe distance, relaxed parry timing (0.55 s window instead of 0.4 s), damage numbers, the controls reminder, screen shake and flashes. Devices set to reduce motion start with shake off and flashes dimmed. To add a setting, add it to `Settings`, `defaultSettings` and `normalizeSettings` in `src/settingsCore.ts`, give it a row in `render` in `src/settings.ts`, and read it through `prefs` where it matters.
+
+The **Pause** button in battle opens the same menu and holds the fight still until it closes; switching away from the app pauses too.
 
 ## Roadmap
 
-1. **Playable game:** art for all beasts, multi-enemy waves, music, settings.
+1. **Playable game:** art for all beasts, multi-enemy waves, music (the settings menu will need a music volume then).
 2. **Real app:** package with Capacitor for iOS and Android, with device saves, native haptics and a closed beta.
 3. **Balance and retention:** economy tuning, daily quests, events.
 4. **Online and launch:** accounts and cloud saves, monetization, store listings, release.

@@ -38,6 +38,8 @@ export function persist(){try{localStorage.setItem(KEY,JSON.stringify(save))}cat
 export let save: SaveData=load();
 /** Wipe progress and start a fresh save. */
 export function resetSave(){save=defaultSave();persist()}
+/** Swap in a different save, such as one loaded from a save code. */
+export function replaceSave(s: SaveData){save=s;persist()}
 export const teamMembers=(): Card[]=>save.team.map(id=>save.roster.find(m=>m.id===id)).filter((m): m is Card=>!!m);
 export const cardById=(id: number)=>save.roster.find(m=>m.id===id);
 /** Same-species cards that can be merged into m to evolve it. */

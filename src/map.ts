@@ -1,3 +1,5 @@
+import { prefs } from './prefs';
+import { flashScale } from './settingsCore';
 import { startBattle } from './battle';
 import {
   CHEST_MILESTONES, GATE, MAIN_STAGES, SIDE_AFTER, chestReward, claimChest, firstClearBonus, frontier,
@@ -277,7 +279,7 @@ export function drawMap(dt: number) {
 
   // Weather.
   const wx = WEATHER[weatherEl];
-  if (weatherEl === 'storm') { flashT -= dt; if (flashT < -rand(2, 5)) flashT = 0.12; if (flashT > 0) { c.fillStyle = 'rgba(255,246,176,0.12)'; c.fillRect(0, 0, w, h); } }
+  if (weatherEl === 'storm') { flashT -= dt; if (flashT < -rand(2, 5)) flashT = 0.12; if (flashT > 0) { c.fillStyle = `rgba(255,246,176,${0.12 * flashScale(prefs)})`; c.fillRect(0, 0, w, h); } }
   for (const m of motes) {
     m.x += m.vx * dt; m.y += m.vy * dt;
     if (m.y < -10) m.y = h + 10; if (m.y > h + 10) m.y = -10;

@@ -1,7 +1,7 @@
 import { frontier, planStage } from './campaign';
 import { emit } from './events';
 import { openMapAtFrontier, renderMap } from './map';
-import { resetSave, save, teamMembers } from './save';
+import { save, teamMembers } from './save';
 import type { Screen } from './types';
 import { cardHTML, openSheet, renderAltar, renderForge, renderRoster } from './ui';
 import { $, $$ } from './util';
@@ -37,18 +37,3 @@ export function renderHome() {
 $('#btnFight').addEventListener('click', () => { emit('fight'); openMapAtFrontier(); });
 $('#btnAltar').addEventListener('click', () => show('altar'));
 $('#btnRoster').addEventListener('click', () => show('roster'));
-
-let resetArm = 0;
-const resetBtn = $<HTMLButtonElement>('#btnReset');
-resetBtn.addEventListener('click', () => {
-  if (Date.now() - resetArm < 3000) {
-    resetSave(); resetArm = 0;
-    resetBtn.textContent = 'Progress reset';
-    renderHome();
-    setTimeout(() => (resetBtn.textContent = 'Reset progress'), 1500);
-    return;
-  }
-  resetArm = Date.now();
-  resetBtn.textContent = 'Tap again to wipe all progress';
-  setTimeout(() => { if (Date.now() - resetArm >= 2900) resetBtn.textContent = 'Reset progress'; }, 3000);
-});

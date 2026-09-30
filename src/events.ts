@@ -13,7 +13,8 @@ export type GameEvent =
   | 'summoned'                    // summon reveal finished; data: { key, rar }
   | 'fused' | 'evolved'           // forge animation finished
   | 'fight'                       // player pressed the Campaign button
-  | 'skipTutorial';               // player skipped from the training fight
+  | 'skipTutorial'                // player skipped from the training fight
+  | 'settings';                   // settings menu opened (true) or closed (false)
 
 type Listener = (ev: GameEvent, data?: unknown) => void;
 const listeners = new Set<Listener>();

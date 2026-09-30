@@ -1,4 +1,6 @@
-import { $, $$, rand } from './util';
+import { onPrefs, prefs, setPref } from './prefs';
+import { gainFor, scaleBuzz } from './settingsCore';
+import { rand } from './util';
 
 /* ---------- sound ---------- */
 // Every sound is synthesized with the Web Audio API, so the game ships no audio files.
@@ -9,8 +11,6 @@ type NoiseOpts = { dur: number; vol?: number; type?: BiquadFilterType; f0?: numb
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let noiseBuf: AudioBuffer | null = null;
-let muted = false;
-try { muted = localStorage.getItem('sigilbound-muted') === '1'; } catch (e) { /* storage unavailable */ }
 
 /** Browsers only allow audio after a user gesture, so this runs on the first tap or key press. */
 function init() {
@@ -19,7 +19,7 @@ function init() {
   if (!AC) return;
   try {
     const c: AudioContext = new AC();
-    const m = c.createGain(); m.gain.value = 0.55;
+    const m = c.createGain(); m.gain.value = gainFor(prefs);
     const comp = c.createDynamicsCompressor(); m.connect(comp); comp.connect(c.destination);
     const buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
     const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -27,7 +27,9 @@ function init() {
     if (c.state === 'suspended') c.resume().catch(() => {});
   } catch (e) { ctx = null; }
 }
-const ready = () => !!ctx && !muted && ctx.state === 'running';
+const ready = () => !!ctx && prefs.sound && prefs.volume > 0 && ctx.state === 'running';
+// Volume changes glide over a few milliseconds so the slider doesn't click.
+onPrefs(s => { if (ctx && master) master.gain.setTargetAtTime(gainFor(s), ctx.currentTime, 0.02); });
 
 function env(g: GainNode, t: number, a: number, peak: number, dec: number) {
   g.gain.setValueAtTime(0.0001, t);
@@ -88,31 +90,18 @@ const P: Record<string, (arg?: any) => void> = {
 export const SFX = {
   init,
   play(name: string, arg?: any) { if (!ready()) return; try { P[name]?.(arg); } catch (e) { /* ignore audio errors */ } },
-  get muted() { return muted; },
-  setMuted(m: boolean) {
-    muted = m;
-    try { localStorage.setItem('sigilbound-muted', m ? '1' : '0'); } catch (e) { /* storage unavailable */ }
-    if (!m) init();
-  },
+  get muted() { return !prefs.sound; },
+  setMuted(m: boolean) { setPref('sound', !m); if (!m) init(); },
 };
 
 /* ---------- haptics ---------- */
-export const CAN_BUZZ = typeof navigator.vibrate === 'function';
-let hapticsOn = true;
-try { hapticsOn = localStorage.getItem('sigilbound-haptics') !== '0'; } catch (e) { /* storage unavailable */ }
+export const CAN_BUZZ = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
+/** Vibrate, scaled by the player's vibration setting. */
 export function buzz(pattern: number | number[]) {
-  if (!hapticsOn || !CAN_BUZZ) return;
-  try { navigator.vibrate(pattern); } catch (e) { /* not allowed here */ }
-}
-
-/* ---------- settings toggles ---------- */
-export function renderToggles() {
-  const s = SFX.muted ? 'Off' : 'On';
-  const sb = $('#btnSound'); sb.textContent = `Sound: ${s}`; sb.setAttribute('aria-pressed', String(!SFX.muted));
-  const mb = $('#btnMute'); mb.textContent = SFX.muted ? 'Muted' : 'Sound'; mb.classList.toggle('off', SFX.muted);
-  const hb = $<HTMLButtonElement>('#btnHaptic');
-  if (!CAN_BUZZ) { hb.textContent = 'Vibration: not on this device'; hb.disabled = true; }
-  else { hb.textContent = `Vibration: ${hapticsOn ? 'On' : 'Off'}`; hb.setAttribute('aria-pressed', String(hapticsOn)); }
+  if (!CAN_BUZZ) return;
+  const p = scaleBuzz(pattern, prefs.buzz);
+  if (!p) return;
+  try { navigator.vibrate(p); } catch (e) { /* not allowed here */ }
 }
 
 export function initSound() {
@@ -121,11 +110,4 @@ export function initSound() {
     const b = (ev.target as Element | null)?.closest('button');
     if (b && !b.closest('#slots') && b.id !== 'btnSummon' && b.id !== 'btnFight') SFX.play('ui');
   });
-  $$('#btnSound, #btnMute').forEach(b => b.addEventListener('click', () => { SFX.setMuted(!SFX.muted); renderToggles(); }));
-  $('#btnHaptic').addEventListener('click', () => {
-    hapticsOn = !hapticsOn;
-    try { localStorage.setItem('sigilbound-haptics', hapticsOn ? '1' : '0'); } catch (e) { /* storage unavailable */ }
-    renderToggles(); buzz(30);
-  });
-  renderToggles();
 }

@@ -53,7 +53,6 @@ export function initTutorial() {
     else if (act === 'skip') skip();
     else if (act === 'finish') finish();
   });
-  $('#btnTutorial').addEventListener('click', replay);
   if (!save.tutorial.done) setStep(resumeStep(save.tutorial.step));
 }
 

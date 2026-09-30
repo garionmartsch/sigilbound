@@ -6,7 +6,9 @@ import { SFX, buzz } from './sfx';
 import { FXDRAW, fbPos, ribbon, tornadoX, waveX, type Fx } from './fx';
 import { applyStatus, cleanse, damageDealtMult, damageTakenMult, drainFrom, rollDazeMiss, STATUS, STATUS_INFO, statusList, tempo, tickStatus, type StatusState } from './status';
 import type { Card, ElementKey, Species } from './types';
-import { $, $$, RM, clamp, ease, ell, fit, pick, rand, rgba } from './util';
+import { prefs } from './prefs';
+import { flashScale, isNumberText, parryWindow, shakeScale, swipeDistances } from './settingsCore';
+import { $, $$, clamp, ease, ell, fit, pick, rand, rgba } from './util';
 import { emit } from './events';
 import { firstClearBonus, nextMain, openableChests, planStage, recordClear, stageUnlocked, starsFor, type EnemySpec, type StagePlan } from './campaign';
 import { REGIONS } from './regions';
@@ -166,8 +168,8 @@ export function pushPart(p: Particle){const bt=B; if(!bt) return;if(bt.parts.len
 export function burst(x: number,y: number,color: string,n: number,sp: number){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,v=rand(0.3,1)*sp;pushPart({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-sp*0.2,life:rand(0.35,0.8),max:0.8,color,r:rand(1.5,4),kind:'spark',rot:0,vr:0})}}
 export function elemBurst(x: number,y: number,el: ElementKey,n: number,sp: number,up?: number){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,v=rand(0.3,1)*sp;pushPart({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-sp*(up??0.25),life:rand(0.4,0.9),max:0.9,color:pick(PCOLS[el]),r:rand(2,4.5),kind:PKIND[el],rot:rand(0,6),vr:rand(-9,9)})}}
 export function fx(o: Omit<Fx,'t'> & {t?: number}): Fx{const bt=B; const f={t:0,...o} as Fx; if(!bt) return f;bt.fx.push(f);return f}
-export function ftext(x: number,y: number,txt: string,color: string,size?: number,life?: number){const bt=B; if(!bt) return;bt.texts.push({x,y,txt,color,size:size||22,life:life||0.9,max:life||0.9})}
-export function shake(a: number){const bt=B; if(!bt) return;if(!RM)bt.shake=Math.max(bt.shake,a)}
+export function ftext(x: number,y: number,txt: string,color: string,size?: number,life?: number){const bt=B; if(!bt) return; if(!prefs.numbers&&isNumberText(txt)) return;bt.texts.push({x,y,txt,color,size:size||22,life:life||0.9,max:life||0.9})}
+export function shake(a: number){const bt=B; if(!bt) return;const k=shakeScale(prefs); if(k>0)bt.shake=Math.max(bt.shake,a*k)}
 export function slashFx(x: number,y: number,ang: number,color: string,body: string,s: number,dur?: number){
   const n=CLAWS[body];
   return fx({type:'slash',x,y,ang,color,n,len:s*2.3,w:s*(n===1?0.26:n===2?0.17:0.13),gap:s*0.3,bow:s*0.35*(Math.random()<.5?1:-1),dur:dur||0.42});
@@ -386,11 +388,12 @@ export function swapTo(i: number){const bt=B; if(!bt) return;
   bt.active=i; bt.swapCd=1.2; bt.pSpawn=0; bt.parry=0; bt.cd=0; bt.buffered=null;
   emit('swap',i);
 }
-export const PARRY=0.4;
+/** Seconds before a hit lands in which a parry works; longer with the relaxed-parry setting. */
+export const parryW=()=>parryWindow(prefs);
 export function parry(){const bt=B; if(!bt) return;
   if(!bt||bt.over||bt.parryCd>0) return;
   const u=cur(); if(!u||u.dead||bt.pSpawn<1) return;
-  bt.parry=PARRY; bt.parryCd=0.75; bt.buffered=null; SFX.play('guard'); buzz(6);
+  bt.parry=parryW(); bt.parryCd=0.75; bt.buffered=null; SFX.play('guard'); buzz(6);
 }
 export function victory(){const bt=B; if(!bt||!bt.plan) return;
   const plan=bt.plan;
@@ -501,7 +504,7 @@ export function updateBattle(dt){const bt=B; if(!bt) return;
       if(e.spawn>=1&&!bt.over&&!cur()?.dead&&(!bt.training||bt.training.enemyActs)){
         e.timer-=dt*tempo(e.st);
         if(e.state==='idle'&&e.timer<=0){e.state='windup';e.timer=e.windup;e.ticked=false;SFX.play('warn')}
-        else if(e.state==='windup'&&!e.ticked&&e.timer<=PARRY){e.ticked=true;SFX.play('window')}
+        else if(e.state==='windup'&&!e.ticked&&e.timer<=parryW()){e.ticked=true;SFX.play('window')}
         else if(e.state==='windup'&&e.timer<=0){enemyStrike(); e.state='idle'; e.timer=rand(1.7,2.7)/e.sp.spd*(e.boss?0.85:1)}
       }
     }
@@ -612,7 +615,7 @@ export function drawBattle(){const bt=B; if(!bt) return;
     drawMonster(c,u.m.sp,g.P.x+ox,g.P.y+oy,s,t*u.sp.spd,{dir:1,evo:u.evo,flash:u.flash,alpha:u.dead?u.fade:bt.pSpawn,scale:sc,sx:1+0.12*kb,sy:1-0.1*kb});
     if(u.st.freeze&&!u.dead) drawIce(c,g.P.x+ox,g.P.y+oy,s,t);
     if(bt.parry>0&&!u.dead){
-      c.save(); c.globalAlpha=Math.min(1,bt.parry/PARRY*1.5); c.translate(g.P.x+s*0.55,g.P.y-s*0.1);
+      c.save(); c.globalAlpha=Math.min(1,bt.parry/parryW()*1.5); c.translate(g.P.x+s*0.55,g.P.y-s*0.1);
       c.strokeStyle='rgba(231,190,110,0.9)'; c.lineWidth=4; c.shadowColor='#E7BE6E'; c.shadowBlur=14;
       c.beginPath(); c.arc(-s*0.6,0,s*1.25,-0.9,0.9); c.stroke();
       c.fillStyle='rgba(231,190,110,0.12)'; c.beginPath(); c.arc(-s*0.6,0,s*1.25,-0.9,0.9); c.arc(-s*0.6,0,s*1.05,0.9,-0.9,true); c.fill();
@@ -622,7 +625,7 @@ export function drawBattle(){const bt=B; if(!bt) return;
   }
   if(e&&e.state==='windup'&&!e.dead&&u&&!u.dead){
     const pr=clamp(1-e.timer/e.windup,0,1);
-    const open=e.timer<=PARRY;
+    const open=e.timer<=parryW();
     c.lineWidth=open?3:2; c.strokeStyle=open?'rgba(231,190,110,0.95)':'rgba(231,190,110,0.5)'; c.setLineDash(open?[]:[4,6]);
     ell(c,g.P.x,g.P.y,s*1.05,s*1.05); c.stroke(); c.setLineDash([]);
     c.lineWidth=3+pr*2; c.strokeStyle=open?`rgba(255,214,130,${0.6+0.4*pr})`:`rgba(224,69,90,${0.35+0.6*pr})`;
@@ -654,7 +657,7 @@ export function drawBattle(){const bt=B; if(!bt) return;
     c.lineWidth=4; c.strokeStyle='rgba(12,8,16,0.9)'; c.strokeText(tx.txt,tx.x,tx.y); c.fillStyle=tx.color; c.fillText(tx.txt,tx.x,tx.y);});
   c.globalAlpha=1;
   c.restore();
-  if(bt.flash>0){c.fillStyle=rgba(bt.flashCol||'#FFFFFF',Math.min(0.5,bt.flash*0.6)); c.fillRect(0,0,w,h);}
+  if(bt.flash>0){c.fillStyle=rgba(bt.flashCol||'#FFFFFF',Math.min(0.5,bt.flash*0.6)*flashScale(prefs)); c.fillRect(0,0,w,h);}
 }
 
 export const hud={eName:$('#eName'),eLvl:$('#eLvl'),eEl:$('#eEl'),eBoss:$('#eBoss'),eHp:$('#eHp'),eHpT:$('#eHpT'),pName:$('#pName'),pLvl:$('#pLvl'),pEl:$('#pEl'),pHp:$('#pHp'),pHpT:$('#pHpT'),pEn:$('#pEn'),eReady:$('#eReady'),pPanel:$('#pPanel'),stage:$('#bStage'),eMu:$('#eMu'),eSt:$('#eSt'),pSt:$('#pSt')};
@@ -706,19 +709,19 @@ field.addEventListener('pointermove',ev=>{const bt=B; if(!bt) return;
   const p=local(ev); ptr.x=p.x; ptr.y=p.y;
   bt.trail.push({x:p.x,y:p.y,t:bt.time});
   const u=cur(); if(u&&Math.random()<0.5) elemBurst(p.x,p.y,u.sp.el,1,50,0.1);
-  if(!ptr.fired){const dx=p.x-ptr.x0,dy=p.y-ptr.y0; if(Math.hypot(dx,dy)>=40){ptr.fired=true;gesture(dx,dy)}}
+  if(!ptr.fired){const dx=p.x-ptr.x0,dy=p.y-ptr.y0; if(Math.hypot(dx,dy)>=swipeDistances(prefs).swipe){ptr.fired=true;gesture(dx,dy)}}
 });
 export function release(ev: PointerEvent){
   if(!ptr||ev.pointerId!==ptr.id) return;
   const q=ptr; ptr=null;
   if(ev.type==='pointercancel'||q.fired) return;
   const dx=q.x-q.x0, dy=q.y-q.y0;
-  if(Math.hypot(dx,dy)<25) playerAct('tap'); else gesture(dx,dy);
+  if(Math.hypot(dx,dy)<swipeDistances(prefs).tap) playerAct('tap'); else gesture(dx,dy);
 }
 field.addEventListener('pointerup',release); field.addEventListener('pointercancel',release);
 field.addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('keydown',ev=>{const bt=B; if(!bt) return;
-  if(current!=='battle'||!bt||ev.repeat) return;
+  if(current!=='battle'||!bt||ev.repeat||!$('#setSheet').hidden) return;
   const k=ev.key.toLowerCase();
   if(k==='j'||k==='f') playerAct('tap');
   else if(k==='k'||k==='d') playerAct('slash');
