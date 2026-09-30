@@ -12,7 +12,7 @@ export type GameEvent =
   | 'screen'                      // data: screen name
   | 'summoned'                    // summon reveal finished; data: { key, rar }
   | 'fused' | 'evolved'           // forge animation finished
-  | 'fight'                       // player pressed Enter Stage
+  | 'fight'                       // player pressed the Campaign button
   | 'skipTutorial';               // player skipped from the training fight
 
 type Listener = (ev: GameEvent, data?: unknown) => void;

@@ -1,3 +1,5 @@
+import type { CampaignState } from './campaign';
+
 export type ElementKey =
   | 'pyre' | 'tide' | 'thorn' | 'frost' | 'storm' | 'stone' | 'gale' | 'radiant' | 'umbral';
 
@@ -89,8 +91,9 @@ export interface SaveData {
   team: number[];
   shards: number;
   gold: number;
-  stage: number;
   nextId: number;
+  /** Campaign progress: stars, chests, story seen. See src/campaign.ts. */
+  campaign: CampaignState;
   /** First-time tutorial progress. */
   tutorial: TutorialState;
 }
@@ -101,4 +104,4 @@ export interface TutorialState {
   step: string;
 }
 
-export type Screen = 'home' | 'battle' | 'altar' | 'roster' | 'forge';
+export type Screen = 'home' | 'battle' | 'altar' | 'roster' | 'forge' | 'map';

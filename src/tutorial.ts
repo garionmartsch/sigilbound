@@ -15,7 +15,7 @@ import { $, RM } from './util';
  * until the last lesson.
  *
  * Part two is a spotlight tour of the menus: summon a beast (a guaranteed
- * Rare), feed a card, learn how evolving works, then start Stage 1.
+ * Rare), feed a card, learn how evolving works, then start the campaign.
  *
  * Progress is saved in save.tutorial, so closing the game mid-tour resumes it.
  * Game code reports what the player did through events (src/events.ts); this
@@ -250,8 +250,8 @@ function menuView(id: StepId): View {
         button: { label: 'Got it', act: 'next' },
       };
     case 'm-ready':
-      if (current === 'home') return { title: 'You\'re ready', text: 'Clear stages to earn shards, gold and card drops. You can replay this tutorial from the home screen any time.', target: '#btnFight', dimmed: true, button: { label: 'Finish', act: 'finish' } };
-      return { title: 'You\'re ready', text: 'Head home to start Stage 1.', target: back, dimmed: true, button: { label: 'Finish', act: 'finish' } };
+      if (current === 'home') return { title: 'You\'re ready', text: 'Tap Campaign to set out across the nine regions. Stages pay shards, gold and card drops, and up to three stars. You can replay this tutorial from the home screen any time.', target: '#btnFight', dimmed: true, button: { label: 'Finish', act: 'finish' } };
+      return { title: 'You\'re ready', text: 'Head home to start the campaign.', target: back, dimmed: true, button: { label: 'Finish', act: 'finish' } };
     default:
       return { title: '', text: '' };
   }

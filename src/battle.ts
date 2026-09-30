@@ -1,13 +1,15 @@
-import { BOX, COST, ELEM, FORMS, SPECIES, addXp, capOf, elemMult, nameOf, statsOf } from './data';
+import { BOX, ELEM, FORMS, SPECIES, addXp, capOf, elemMult, nameOf, statsOf } from './data';
 import { drawMonster, drawSigil } from './render';
 import { newCard, persist, save, teamMembers } from './save';
 import { current, show } from './screens';
 import { SFX, buzz } from './sfx';
 import { FXDRAW, fbPos, ribbon, tornadoX, waveX, type Fx } from './fx';
 import { applyStatus, cleanse, damageDealtMult, damageTakenMult, drainFrom, rollDazeMiss, STATUS, STATUS_INFO, statusList, tempo, tickStatus, type StatusState } from './status';
-import type { Card, ElementKey, RarityKey, Species } from './types';
+import type { Card, ElementKey, Species } from './types';
 import { $, $$, RM, clamp, ease, ell, fit, pick, rand, rgba } from './util';
 import { emit } from './events';
+import { firstClearBonus, nextMain, openableChests, planStage, recordClear, stageUnlocked, starsFor, type EnemySpec, type StagePlan } from './campaign';
+import { REGIONS } from './regions';
 
 /* ---------- battle state ---------- */
 /** One of the player's three beasts during a fight. */
@@ -24,7 +26,11 @@ export interface Unit {
 }
 /** The current enemy. */
 export interface Enemy {
-  key: string; sp: Species; evo: number; name: string; lvl: number; boss: boolean;
+  key: string; sp: Species; evo: number; name: string; lvl: number;
+  /** A third-wave leader or a ruler: tougher, bigger, better rewards. */
+  boss: boolean;
+  /** A region's Legendary or the Gate's Mythic. */
+  ruler?: boolean;
   hp: number; maxHp: number; atk: number;
   state: 'idle' | 'windup' | 'dead';
   /** Seconds until the next state change. */
@@ -74,6 +80,8 @@ export interface Battle {
   lastKind?: ActKind;
   /** Present only in the tutorial's training fight. */
   training?: TrainingRules;
+  /** The campaign stage being fought (absent in training). */
+  plan?: StagePlan;
 }
 
 /** Gesture the tutorial is demonstrating with a ghost finger. */
@@ -103,21 +111,12 @@ const fieldCv=$<HTMLCanvasElement>('#fieldCan'), field=$('#field');
 /** The beast currently fighting, if any. */
 export const cur=(): Unit|undefined=>B?B.team[B.active]:undefined;
 
-export function makeEnemy(stage: number,wave: number): Enemy{
-  const boss=wave===3;
-  const keys=Object.keys(SPECIES);
-  // Which rarities can appear: bosses get rarer beasts as stages climb.
-  const allowed: RarityKey[]=boss
-    ? ['rare','epic',...(stage>=8?['legendary' as const]:[]),...(stage>=15?['mythic' as const]:[])]
-    : ['common','rare',...(stage>=5?['epic' as const]:[])];
-  let pool=keys.filter(k=>allowed.includes(SPECIES[k].rarity));
-  // Top rarities show up only sometimes, so a boss is usually rare or epic.
-  if(boss&&Math.random()<0.75) pool=pool.filter(k=>SPECIES[k].rarity==='rare'||SPECIES[k].rarity==='epic');
-  const key=pick(pool);
-  const sp=SPECIES[key], lvl=stage+wave-1+(boss?1:0);
-  const evo=boss?(stage>=7?2:stage>=3?1:0):(stage>=6?1:0), k=(1+0.1*(lvl-1))*(1+0.35*evo);
-  const maxHp=Math.round(sp.hp*k*(boss?2.1:0.9));
-  return {key,sp,evo,name:FORMS[key][evo],lvl,boss,hp:maxHp,maxHp,atk:sp.atk*k*(boss?1.1:0.8),state:'idle' as const,st:{},dotAcc:0,dotT:0,timer:rand(1.5,2.1),windup:boss?0.95:0.85,
+/** Build an enemy from a campaign stage's plan. */
+function makeEnemyFrom(e: EnemySpec): Enemy{
+  const sp=SPECIES[e.key], k=(1+0.1*(e.lvl-1))*(1+0.35*e.evo);
+  const hpM=e.boss?2.8:e.leader?2.1:0.9, atkM=e.boss?1.2:e.leader?1.1:0.8;
+  const maxHp=Math.round(sp.hp*k*hpM);
+  return {key:e.key,sp,evo:e.evo,name:FORMS[e.key][e.evo],lvl:e.lvl,boss:e.leader||e.boss,ruler:e.boss,hp:maxHp,maxHp,atk:sp.atk*k*atkM,state:'idle' as const,st:{},dotAcc:0,dotT:0,timer:rand(1.5,2.1),windup:e.boss?1.0:e.leader?0.95:0.85,
     flash:0,lunge:0,dead:false,fade:1,spawn:0};
 }
 /** A Thorn beast: Cindermaw (Pyre) is strong against it and Tidecoil (Tide) is weak, for the matchup lesson. */
@@ -127,11 +126,12 @@ function makeTrainingEnemy(): Enemy{
   return {key,sp,evo:0,name:sp.name,lvl:3,boss:false,hp:maxHp,maxHp,atk:5,state:'idle',st:{},dotAcc:0,dotT:0,timer:2,windup:1.6,
     flash:0,lunge:0,dead:false,fade:1,spawn:0};
 }
-export function startBattle(opts: {training?: boolean}={}){
+export function startBattle(opts: {training?: boolean; plan?: StagePlan}={}){
+  if(!opts.training&&!opts.plan) return;
   const cards=opts.training?TRAINING_TEAM:teamMembers();
   const team=cards.map(m=>{const st=statsOf(m);return {m,sp:SPECIES[m.sp],name:nameOf(m),evo:m.evo||0,skill:m.skill||1,hp:st.maxHp,maxHp:st.maxHp,atk:st.atk,energy:0,dead:false,fade:1,flash:0,st:{},dotAcc:0,dotT:0}});
   if(!team.length) return;
-  const b: Battle={team,active:0,stage:opts.training?0:save.stage,training:opts.training?{enemyActs:false,protectEnemy:true,demo:null}:undefined,wave:0,enemy:null,cd:0,swapCd:0,parry:0,parryCd:0,buffered:null,fx:[],hitstop:0,flash:0,flashCol:'#FFFFFF',lunge:0,pSpawn:1,
+  const b: Battle={team,active:0,stage:opts.plan?opts.plan.difficulty:0,plan:opts.plan,training:opts.training?{enemyActs:false,protectEnemy:true,demo:null}:undefined,wave:0,enemy:null,cd:0,swapCd:0,parry:0,parryCd:0,buffered:null,fx:[],hitstop:0,flash:0,flashCol:'#FFFFFF',lunge:0,pSpawn:1,
     parts:[],texts:[],trail:[],shake:0,time:0,over:false,earned:0,gold:0,drops:[],timers:[],
     embers:Array.from({length:26},()=>({x:Math.random(),y:Math.random(),v:rand(0.02,0.06),r:rand(0.8,2.2),ph:Math.random()*6}))};
   B=b;
@@ -143,9 +143,12 @@ export function startBattle(opts: {training?: boolean}={}){
   nextWave();
 }
 export function nextWave(){const bt=B; if(!bt) return;
-  bt.wave++; const e=bt.training?makeTrainingEnemy():makeEnemy(bt.stage,bt.wave); bt.enemy=e;
-  if(bt.training) banner('Training','Learn to fight');
-  else banner(bt.wave===3?'Boss':`Wave ${bt.wave}`, bt.wave===3?e.name:`Stage ${bt.stage}`);
+  bt.wave++;
+  const e=bt.training||!bt.plan?makeTrainingEnemy():makeEnemyFrom(bt.plan.waves[bt.wave-1]); bt.enemy=e;
+  if(bt.training||!bt.plan) banner('Training','Learn to fight');
+  else if(e.ruler) banner(e.name, bt.plan.kind==='gate'?'Guardian of the Gate':`Ruler of ${REGIONS[bt.plan.region].name}`);
+  else if(e.boss) banner('Leader', e.name);
+  else banner(`Wave ${bt.wave}`, bt.plan.name);
 }
 export function banner(txt: string,sub?: string){SFX.play('banner');const b=$('#banner'); b.innerHTML=`${txt}<small>${sub||''}</small>`; b.classList.remove('go'); void b.offsetWidth; b.classList.add('go');}
 
@@ -321,10 +324,12 @@ function enemyDefeated(){const bt=B; if(!bt) return;
     elemBurst(g.E.x,g.E.y,e.sp.el,70,420,0.4); shake(0.9); SFX.play('kill'); buzz([30,40,90]);
     bt.hitstop=Math.max(bt.hitstop,0.18); bt.flash=Math.max(bt.flash,0.4); bt.flashCol='#FFF4DC';
     if(bt.training){bt.timers.push({t:1.3,fn:trainingComplete}); return}
-    const reward=e.boss?60+10*bt.stage:20+5*bt.stage; bt.earned+=reward;
-    const gold=e.boss?120+30*bt.stage:40+10*bt.stage; bt.gold+=gold;
+    const big=e.ruler?1.5:1;
+    const reward=Math.round((e.boss?60+10*bt.stage:20+5*bt.stage)*big); bt.earned+=reward;
+    const gold=Math.round((e.boss?120+30*bt.stage:40+10*bt.stage)*big); bt.gold+=gold;
     ftext(g.E.x,g.E.y,`+${reward} shards · +${gold} gold`,'#E7BE6E',18,1.4);
-    if(Math.random()<(e.boss?0.3:0.35)&&save.roster.length+bt.drops.length<BOX){bt.drops.push(e.key); ftext(g.E.x,g.E.y+26,`${e.sp.name} card dropped!`,'#F0E8F5',17,1.6)}
+    const dropChance=(e.boss?0.3:0.35)*(bt.plan?.kind==='side'?2:1);
+    if(Math.random()<dropChance&&save.roster.length+bt.drops.length<BOX){bt.drops.push(e.key); ftext(g.E.x,g.E.y+26,`${e.sp.name} card dropped!`,'#F0E8F5',17,1.6)}
     bt.timers.push({t:1.3,fn:()=>{if(bt.wave<3) nextWave(); else victory();}});
   }
 }
@@ -387,20 +392,37 @@ export function parry(){const bt=B; if(!bt) return;
   const u=cur(); if(!u||u.dead||bt.pSpawn<1) return;
   bt.parry=PARRY; bt.parryCd=0.75; bt.buffered=null; SFX.play('guard'); buzz(6);
 }
-export function victory(){const bt=B; if(!bt) return;
+export function victory(){const bt=B; if(!bt||!bt.plan) return;
+  const plan=bt.plan;
   bt.over=true; SFX.play('win'); buzz([20,40,20,40,60]);
-  save.shards+=bt.earned; save.gold+=bt.gold;
+  const ko=bt.team.filter(u=>u.dead).length, secs=Math.round(bt.time);
+  const stars=starsFor(true,ko,secs,plan.par);
+  const before=save.campaign.stars[plan.id]??0;
+  const first=recordClear(save.campaign,plan,stars);
+  const bonus=first?firstClearBonus(plan):{shards:0,gold:0};
+  save.shards+=bt.earned+bonus.shards; save.gold+=bt.gold+bonus.gold;
   bt.drops.forEach(k=>newCard(save,k));
   const ups: string[]=[];
-  const xp=40+10*bt.stage;
+  const xp=40+8*plan.difficulty;
   teamMembers().forEach(m=>{if(addXp(m,xp)) ups.push(`${nameOf(m)} reached <b>Lv ${m.lvl}</b>${m.lvl>=capOf(m)?' (max)':''}`)});
-  const cleared=bt.stage; save.stage++; persist();
+  const next=nextMain(plan);
+  save.campaign.view={circle:next.circle,region:plan.kind==='gate'?0:plan.region};
+  if(plan.kind==='gate') save.campaign.view={circle:plan.circle+1,region:0};
+  persist();
+  const check=(ok: boolean,t: string)=>`<li class="${ok?'ok':'no'}">${ok?'✓':'✗'} ${t}</li>`;
   const drops=bt.drops.length?`<li>Card drops: <b>${bt.drops.map(k=>SPECIES[k].name).join(', ')}</b></li>`:'';
-  $('#resultBox').innerHTML=`<h2>Stage ${cleared} cleared</h2><ul><li><b>+${bt.earned}</b> soul shards · <b>+${bt.gold}</b> gold</li>${drops}<li>Team gained <b>${xp} XP</b></li>${ups.map(x=>`<li>${x}</li>`).join('')}</ul>
-    ${save.shards>=COST?'<p style="margin:0;color:var(--gold)">You have enough shards to summon.</p>':''}
-    <div class="btns"><button id="rHome">Home</button><button class="primary" id="rNext">Stage ${save.stage}</button></div>`;
+  const chest=plan.kind!=='gate'&&openableChests(save.campaign,plan.circle,plan.region).length?'<li class="gold">A chest is ready on the map.</li>':'';
+  const canNext=stageUnlocked(save.campaign,next);
+  const np=canNext?planStage(next):null;
+  $('#resultBox').innerHTML=`<h2>${plan.kind==='gate'?'The Gate opens':'Stage cleared'}</h2>
+    <div class="rstars" aria-label="${stars} of 3 stars">${[1,2,3].map(i=>`<span class="${i<=stars?'on':''}" style="animation-delay:${0.15+i*0.25}s">★</span>`).join('')}</div>
+    <p class="rname">${plan.label} · ${plan.name}${stars>before&&before>0?' · <b>New best</b>':''}</p>
+    <ul class="rcrit">${check(true,'Cleared')}${check(ko===0,'No beast knocked out')}${check(secs<=plan.par,`Under ${plan.par}s (${secs}s)`)}</ul>
+    <ul><li><b>+${bt.earned+bonus.shards}</b> soul shards · <b>+${bt.gold+bonus.gold}</b> gold${first?' <span class="gold">(first clear bonus)</span>':''}</li>${drops}<li>Team gained <b>${xp} XP</b></li>${ups.map(x=>`<li>${x}</li>`).join('')}${chest}</ul>
+    <div class="btns"><button id="rHome">Map</button><button class="primary" id="rNext">${np?`Next: ${np.label}`:'Replay'}</button></div>`;
   $('#result').hidden=false;
-  $('#rHome').onclick=()=>endBattle(); $('#rNext').onclick=()=>startBattle();
+  $('#rHome').onclick=()=>endBattle();
+  $('#rNext').onclick=()=>startBattle({plan:np??plan});
 }
 /** The training fight is won: fixed rewards, then on to the rest of the tutorial. */
 function trainingComplete(){const bt=B; if(!bt) return;
@@ -411,16 +433,17 @@ function trainingComplete(){const bt=B; if(!bt) return;
   $('#result').hidden=false;
   $('#rNext').onclick=()=>{endBattle(); emit('trainingDone')};
 }
-/** Leave the battle screen for home. */
-export function endBattle(){B=null; show('home')}
+/** Leave the battle: back to the map from a campaign stage, home from training. */
+export function endBattle(){const toMap=!!B?.plan; B=null; show(toMap?'map':'home')}
 export function defeat(){const bt=B; if(!bt) return;
   bt.over=true; SFX.play('lose'); buzz(200);
   const kept=Math.floor(bt.earned/2), keptG=Math.floor(bt.gold/2); save.shards+=kept; save.gold+=keptG;
   bt.drops.forEach(k=>newCard(save,k)); persist();
   $('#resultBox').innerHTML=`<h2 class="lose">Your team fell</h2><ul><li>Kept <b>${kept}</b> soul shards and <b>${keptG}</b> gold${bt.drops.length?` plus ${bt.drops.length} card drop${bt.drops.length>1?'s':''}`:''}</li><li>Tip: swipe down when the closing ring turns gold to parry and counter.</li></ul>
-    <div class="btns"><button id="rHome">Home</button><button class="primary" id="rNext">Retry</button></div>`;
+    <div class="btns"><button id="rHome">Map</button><button class="primary" id="rNext">Retry</button></div>`;
   $('#result').hidden=false;
-  $('#rHome').onclick=()=>endBattle(); $('#rNext').onclick=()=>startBattle();
+  const plan=bt.plan;
+  $('#rHome').onclick=()=>endBattle(); $('#rNext').onclick=()=>startBattle({plan});
 }
 let retreatArm=0;
 const retreatBtn=$('#btnRetreat');
@@ -567,7 +590,7 @@ export function drawBattle(){const bt=B; if(!bt) return;
   if(e) drawSigil(c,g.E.x,g.E.y+s*0.86,s*1.35,0.3,ELEM[e.sp.el].color,t*0.4,0.55);
   if(u) drawSigil(c,g.P.x,g.P.y+s*0.86,s*1.35,0.3,ELEM[u.sp.el].color,-t*0.4,0.55);
   if(e&&e.fade>0){
-    const es=e.boss?1.25:1;
+    const es=e.ruler?1.35:e.boss?1.25:1;
     const ph=e.lunge>0?Math.sin((1-e.lunge)*Math.PI):0;
     const kb=e.kb||0, kbo=Math.sin(kb*Math.PI*0.5)*s*0.4;
     const ox=-vx*0.28*ph+ux*kbo, oy=-vy*0.28*ph+uy*kbo;
@@ -644,8 +667,8 @@ function renderStatus(el: HTMLElement, st: StatusState){
 }
 export function updateHud(){const bt=B; if(!bt) return;
   const e=bt.enemy,u=cur();
-  setText(hud.stage,bt.training?'Training':`Stage ${bt.stage} · ${bt.wave===3?'Boss':'Wave '+bt.wave+'/3'}`);
-  if(e){setText(hud.eName,e.name); setText(hud.eLvl,'Lv '+e.lvl); setText(hud.eEl,ELEM[e.sp.el].name); hud.eEl.className='chip '+e.sp.el; hud.eBoss.hidden=!e.boss;
+  setText(hud.stage,bt.training||!bt.plan?'Training':`${bt.plan.label} · Wave ${bt.wave}/3`);
+  if(e){setText(hud.eName,e.name); setText(hud.eLvl,'Lv '+e.lvl); setText(hud.eEl,ELEM[e.sp.el].name); hud.eEl.className='chip '+e.sp.el; hud.eBoss.hidden=!e.boss; setText(hud.eBoss,e.ruler?'Boss':'Leader');
     hud.eHp.style.width=(100*e.hp/e.maxHp)+'%'; setText(hud.eHpT,`${Math.ceil(e.hp)} / ${e.maxHp}`);}
   if(u){setText(hud.pName,u.name); setText(hud.pLvl,'Lv '+u.m.lvl); setText(hud.pEl,ELEM[u.sp.el].name); hud.pEl.className='chip '+u.sp.el;
     hud.pHp.style.width=(100*u.hp/u.maxHp)+'%'; setText(hud.pHpT,`${Math.ceil(u.hp)} / ${u.maxHp}`);

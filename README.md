@@ -39,8 +39,9 @@ Every push to GitHub runs the type check, the tests and the build automatically.
 
 ## What's in the game
 
-- **Tutorial:** new players get a short training fight where a coach teaches one move at a time (strike, slash, special, parry, swapping, reading matchups) while a ghost finger demonstrates each gesture. It can't be lost. A spotlight tour of the menus follows: a guaranteed-Rare first summon, feeding a card, how evolving works, then Stage 1. It can be skipped at any point, resumes after a restart, and can be replayed from the home screen.
-- **Combat:** swipe gestures, parry timing, hit-stop and knockback, elemental specials, three-wave stages with bosses.
+- **Tutorial:** new players get a short training fight where a coach teaches one move at a time (strike, slash, special, parry, swapping, reading matchups) while a ghost finger demonstrates each gesture. It can't be lost. A spotlight tour of the menus follows: a guaranteed-Rare first summon, feeding a card, how evolving works, then the campaign. It can be skipped at any point, resumes after a restart, and can be replayed from the home screen.
+- **Endless campaign:** nine elemental regions, each a winding trail of eight stages plus two side stages, ruled by that element's Legendary. Beyond the Nightfall, the Sigil Gate pits you against a Mythic; beating it opens the next Circle, the same world harder, with evolved rulers, forever. Stages earn up to three stars (win, lose no beast, beat par time); region star totals open chests, with an Epic card at 30 stars in Circle I and the region's Legendary after that. Cleared stages can be replayed for shards, gold and card drops. Each region opens with a short story, and each boss with a line of its own.
+- **Combat:** swipe gestures, parry timing, hit-stop and knockback, elemental specials, three-wave stages ending in a leader or a ruler.
 - **Nine elements:** Pyre, Tide, Thorn, Frost, Storm, Stone and Gale form a wheel where each is strong against two and weak to two. Radiant and Umbral are strong against each other.
 - **Status effects:** every element leaves a mark. Burn, Soak, Poison, Chill (which becomes Freeze), Shock, Sunder, Daze, Bless and Curse, with combos (Soak + Shock doubles the shock; Soak + Chill freezes at once). Enemies inflict them too; a parry blocks them.
 - **96 beasts, three forms each (288 creatures):** 64 hand-designed plus 32 generated commons, across five rarities from Common to Mythic. Seven body types plus add-on wings, tails and markings are drawn in code, with image art replacing them as it's added.
@@ -61,6 +62,9 @@ src/
     generated.ts    Common beasts made by tools/generate-commons.ts (don't edit by hand)
     art.ts          Which beasts have image art
   status.ts         Status effect rules and tuning numbers
+  regions.ts        The campaign's world: region names, stage names, story, rulers, colors
+  campaign.ts       Campaign rules: stage plans, difficulty, unlocks, stars, chests (no page access, fully tested)
+  map.ts            The campaign map screen, stage cards, story cards and chests
   tutorial.ts       The first-time tutorial: coach, spotlight, lesson rules
   tutorialFlow.ts   Tutorial step order (no page access, so it's testable)
   events.ts         Event bus: game code reports player actions; the tutorial listens
@@ -90,6 +94,8 @@ tools/
 
 **Tune status effects.** Durations, damage and chances are in `STATUS` at the top of `src/status.ts`.
 
+**Change the campaign.** Region names, stage names, story lines and which Legendary rules a region are in `src/regions.ts`; that file is only words and settings. Difficulty (enemy levels, which rarities appear, when enemies evolve), par times, chest rewards and first-clear bonuses are in `src/campaign.ts`. Stage enemies are generated from each stage's id, so changing a region's `id` would change its enemies and orphan players' stars; rename `name` instead.
+
 **Change the tutorial.** Lesson text and what each step points at are in `src/tutorial.ts` (`BATTLE` for the training fight, `menuView` for the tour). The step order is in `src/tutorialFlow.ts`, and the training fight's team, enemy and rewards are at the top of `src/battle.ts` (`TRAINING_TEAM`, `makeTrainingEnemy`, `TRAINING_REWARD`). To add a step, add its id to `tutorialFlow.ts`, then give it text in `tutorial.ts` and a completion event in `handle`.
 
 **Tune the economy.** Level caps, XP, sell prices and evolve costs are in `RARITY` and the card rules in `src/data.ts`. Battle rewards and drop chances are in `hitEnemy` in `src/battle.ts`.
@@ -110,11 +116,11 @@ A beast without art falls back to its code-drawn version, so art can be added on
 
 ## Saves
 
-Progress is stored in the browser's local storage under `sigilbound-save-v2`. Saves from older versions are upgraded automatically by `migrate` in `src/save.ts`. **Reset progress** on the home screen wipes the save. Tutorial progress is saved too; saves from before the tutorial existed skip it, and **Replay tutorial** on the home screen starts it again.
+Progress is stored in the browser's local storage under `sigilbound-save-v2`, including campaign stars, opened chests and story seen. Saves from before the campaign had a single stage number; they're converted to that many cleared stages along the trail, with one star each. Saves from older versions are upgraded automatically by `migrate` in `src/save.ts`. **Reset progress** on the home screen wipes the save. Tutorial progress is saved too; saves from before the tutorial existed skip it, and **Replay tutorial** on the home screen starts it again.
 
 ## Roadmap
 
-1. **Playable game:** art for all beasts, a campaign map, multi-enemy waves, music, settings.
+1. **Playable game:** art for all beasts, multi-enemy waves, music, settings.
 2. **Real app:** package with Capacitor for iOS and Android, with device saves, native haptics and a closed beta.
 3. **Balance and retention:** economy tuning, daily quests, events.
 4. **Online and launch:** accounts and cloud saves, monetization, store listings, release.

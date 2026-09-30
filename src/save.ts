@@ -1,4 +1,5 @@
 import { MAX_EVO, MAX_SKILL, SPECIES, capOf } from './data';
+import { campaignFromOldStage, newCampaign } from './campaign';
 import type { Card, SaveData } from './types';
 import { clamp } from './util';
 
@@ -6,7 +7,7 @@ import { clamp } from './util';
 export const KEY='sigilbound-save-v2', OLDKEY='sigilbound-save-v1';
 export function newCard(s: SaveData,sp: string,lvl?: number): Card{const c: Card={id:s.nextId++,sp,lvl:lvl||1,xp:0,evo:0,skill:1,locked:false};s.roster.push(c);return c}
 export function defaultSave(): SaveData{
-  const s: SaveData={roster:[],team:[],shards:300,gold:1500,stage:1,nextId:1,tutorial:{done:false,step:'intro'}};
+  const s: SaveData={roster:[],team:[],shards:300,gold:1500,nextId:1,tutorial:{done:false,step:'intro'},campaign:newCampaign()};
   ['cindermaw','tidecoil','brambleback'].forEach(k=>s.team.push(newCard(s,k).id));
   ['cindermaw','tidecoil','brambleback','cindermaw'].forEach(k=>newCard(s,k));
   return s;
@@ -18,7 +19,10 @@ export function migrate(s: any): SaveData{
   s.roster.forEach((m: Card)=>{m.evo=clamp(m.evo||0,0,MAX_EVO);m.skill=clamp(m.skill||1,1,MAX_SKILL);m.locked=!!m.locked;m.xp=m.xp||0;m.lvl=clamp(m.lvl||1,1,capOf(m))});
   if(typeof s.gold!=='number') s.gold=1500;
   if(typeof s.shards!=='number') s.shards=0;
-  s.stage=s.stage||1;
+  // Saves from before the campaign counted stages 1, 2, 3...; turn that into cleared stages.
+  if(!s.campaign||typeof s.campaign.stars!=='object') s.campaign=campaignFromOldStage(s.stage||1);
+  s.campaign.chests=s.campaign.chests||{}; s.campaign.seen=s.campaign.seen||[];
+  delete s.stage;
   s.nextId=Math.max(s.nextId||1,...s.roster.map((m: Card)=>m.id+1));
   s.team=s.team.filter((id: number)=>s.roster.some((m: Card)=>m.id===id)).slice(0,3);
   if(!s.team.length) s.team=[s.roster[0].id];

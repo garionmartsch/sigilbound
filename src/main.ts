@@ -1,6 +1,7 @@
 import './styles.css';
 import { B, drawBattle, updateBattle, updateHud } from './battle';
 import { ELEM, ELEM_ORDER } from './data';
+import { drawMap } from './map';
 import { drawMonster } from './render';
 import { current, show } from './screens';
 import { initSound } from './sfx';
@@ -34,6 +35,7 @@ function loop(now: number) {
   if (current === 'battle' && B) { updateBattle(dt); if (B) { drawBattle(); updateHud(); } }
   if (current === 'altar') drawAltar(dt);
   if (current === 'forge') drawForge(dt);
+  if (current === 'map') drawMap(dt);
   drawPortraits();
   tutorialFrame();
   requestAnimationFrame(loop);

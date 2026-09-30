@@ -19,11 +19,11 @@
     <div class="purse">
       <div><span>Soul shards</span><b id="hShards">0</b></div>
       <div><span>Gold</span><b id="hGold">0</b></div>
-      <div><span>Stage</span><b id="hStage">1</b></div>
+      <div><span>Stars</span><b id="hStage">0</b></div>
       <div><span>Cards</span><b id="hCount">3</b></div>
     </div>
     <div class="teamrow" id="hTeam"></div>
-    <button class="primary" id="btnFight">Enter Stage 1</button>
+    <button class="primary" id="btnFight">Campaign</button>
     <div class="navrow">
       <button id="btnAltar">Summoning Altar</button>
       <button id="btnRoster">Cards &amp; Team</button>
@@ -46,7 +46,7 @@
   </section>
 
   <section id="battle" class="screen" hidden>
-    <div class="bhead"><span class="stage" id="bStage">Stage 1</span><span class="hbtns"><button id="btnMute">Sound</button><button id="btnRetreat">Retreat</button></span></div>
+    <div class="bhead"><span class="stage" id="bStage">1-1</span><span class="hbtns"><button id="btnMute">Sound</button><button id="btnRetreat">Retreat</button></span></div>
     <div class="panel">
       <div class="pline"><b id="eName">—</b><span class="lv" id="eLvl"></span><span class="chip" id="eEl"></span><span class="chip boss" id="eBoss" hidden>Boss</span><span class="num" id="eHpT"></span></div>
       <span class="bar enemy"><i id="eHp"></i></span>
@@ -65,6 +65,14 @@
     <div class="slots" id="slots"></div>
     <div class="hint"><b>Tap</b> strike · <b>Swipe ↔</b> slash · <b>Swipe ↑</b> special · <b>Swipe ↓</b> parry</div>
     <div class="overlay" id="result" hidden><div class="box" id="resultBox"></div></div>
+  </section>
+
+  <section id="map" class="screen" hidden>
+    <div class="topbar"><button data-go="home">← Home</button><div class="purse-sm">Shards <b id="mShards">0</b> · Gold <b id="mGold">0</b></div></div>
+    <div class="mhead" id="mHead"></div>
+    <div class="mapwrap" id="mapWrap"><canvas id="mapCan"></canvas><div class="mapnodes" id="mapNodes"></div></div>
+    <div class="overlay sheet" id="stageSheet" hidden><div class="box detail stagebox" id="stageBox" role="dialog" aria-modal="true"></div></div>
+    <div class="overlay sheet" id="storySheet" hidden><div class="box story" id="storyBox" role="dialog" aria-modal="true"></div></div>
   </section>
 
   <section id="altar" class="screen" hidden>
