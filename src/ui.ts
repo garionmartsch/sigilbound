@@ -1,4 +1,4 @@
-import { BOX, CALL_COST, COST, ELEM, ELEM_ORDER, EVO_LABEL, FORMS, MAX_EVO, MAX_SKILL, RARITY, SPECIES, addXp, capOf, evoCost, feedXp, fuseCost, nameOf, rarOf, sellOf, simXp, statsOf, xpNext } from './data';
+import { BOX, CALL_COST, COST, ELEM, ELEM_ORDER, EVO_LABEL, FORMS, MAX_EVO, MAX_SKILL, RARITY, RARITY_ORDER, SPECIES, addXp, capOf, evoCost, feedXp, fuseCost, nameOf, rarOf, sellOf, simXp, statsOf, xpNext } from './data';
 import { drawMonster, drawSigil } from './render';
 import { cardById, fodderFor, newCard, partnersFor, persist, save } from './save';
 import type { Card, RarityKey } from './types';
@@ -13,7 +13,7 @@ export function pipsHTML(m: Card){let r='';for(let i=0;i<=MAX_EVO;i++)r+=`<i cla
 export function cardHTML(m: Card,o: {sel?: boolean; selno?: number|string}={}){
   const sp=SPECIES[m.sp],R=rarOf(m),slot=save.team.indexOf(m.id),cap=capOf(m),ec=ELEM[sp.el].color;
   const flags=(slot>=0?`<span class="flag team">Team ${slot+1}</span>`:'')+(m.locked?'<span class="flag">Locked</span>':'')+(m.skill>1?`<span class="flag">SL ${m.skill}</span>`:'');
-  return `<button class="card${o.sel?' sel':''}" data-id="${m.id}" style="--rc:${R.color};--ec:${ec};--eg:${rgba(ec,0.28)}" aria-label="${nameOf(m)}, ${R.label}, level ${m.lvl}">
+  return `<button class="card r-${sp.rarity}${o.sel?' sel':''}" data-id="${m.id}" style="--rc:${R.color};--ec:${ec};--eg:${rgba(ec,0.28)}" aria-label="${nameOf(m)}, ${R.label}, level ${m.lvl}">
     <span class="cstars">${'★'.repeat(R.stars)}</span>${o.selno?`<span class="selno">${o.selno}</span>`:'<span class="cel"></span>'}<span class="cflags">${flags}</span>
     <canvas class="pcan" data-sp="${m.sp}" data-evo="${m.evo||0}" data-seed="${(m.id*0.73)%5}"></canvas>
     <span class="cname">${nameOf(m)}</span><span class="clv">${m.lvl>=cap?`<b>Lv ${m.lvl} · Max</b>`:`Lv ${m.lvl}/${cap}`}</span>${pipsHTML(m)}</button>`;
@@ -39,15 +39,21 @@ export function renderAltar(){
   const g=$<HTMLButtonElement>('#btnCall'); g.disabled=full||save.gold<CALL_COST||!!A.anim;
   g.textContent=full?'Sell or feed cards to make room':(save.gold<CALL_COST?`Beast Call · need ${CALL_COST-save.gold} more gold`:`Beast Call · ${CALL_COST} gold`);
   $('#oddsT').innerHTML=`<tr><th>Rarity</th><th class="n">Rift</th><th class="n">Call</th><th>Beasts</th></tr>`+
-    Object.entries(RARITY).map(([r,v])=>`<tr><td><span class="chip ${r}">${v.label}</span></td><td class="n">${v.w}%</td><td class="n">${v.call}%</td><td>${Object.values(SPECIES).filter(s=>s.rarity===r).map(s=>s.name).join(', ')}</td></tr>`).join('');
+    RARITY_ORDER.map(r=>{const v=RARITY[r], pool=Object.values(SPECIES).filter(s=>s.rarity===r);
+      const who=pool.length<=5?pool.map(s=>s.name).join(', '):`${pool.length} beasts`;
+      return `<tr><td><span class="chip ${r}">${v.label}</span></td><td class="n">${v.w}%</td><td class="n">${v.call}%</td><td>${who}</td></tr>`}).join('');
 }
-export function roll(kind){
-  const r=Math.random()*100; let rar;
-  if(kind==='rift') rar=r<RARITY.epic.w?'epic':(r<RARITY.epic.w+RARITY.rare.w?'rare':'common');
-  else rar=r<RARITY.rare.call?'rare':'common';
+/** Pick a beast for a summon: first a rarity by its published rate, then a beast of that rarity. */
+export function roll(kind: 'rift'|'call'): string{
+  let r=Math.random()*100, rar: RarityKey='common';
+  for(const k of [...RARITY_ORDER].reverse()){
+    const w=kind==='rift'?RARITY[k].w:RARITY[k].call;
+    if(r<w){rar=k;break}
+    r-=w;
+  }
   return pick(Object.keys(SPECIES).filter(k=>SPECIES[k].rarity===rar));
 }
-export function summon(kind){
+export function summon(kind: 'rift'|'call'){
   if(A.anim||save.roster.length>=BOX) return;
   if(kind==='rift'){if(save.shards<COST)return; save.shards-=COST}
   else {if(save.gold<CALL_COST)return; save.gold-=CALL_COST}
@@ -72,7 +78,7 @@ export function drawAltar(dt){
     const an=A.anim; an.t+=dt; const k=Math.min(1,an.t/1.4);
     spin=0.25+k*k*5; glow=0.25+k*0.9; if(k>0.45) col=RARITY[an.rar].color;
     if(Math.random()<0.6+k){const a=Math.random()*Math.PI*2; A.parts.push({x:cx+Math.cos(a)*R,y:cy+Math.sin(a)*R,tx:cx,ty:cy,life:0.6,max:0.6,color:col})}
-    if(an.t>=1.4&&!an.done){an.done=true; A.flash=1; A.shown={key:an.key,t:0,rar:an.rar}; SFX.play('reveal',an.rar); buzz(an.rar==='epic'?[40,60,40,60,140]:an.rar==='rare'?[40,50,80]:40);
+    if(an.t>=1.4&&!an.done){an.done=true; A.flash=1; A.shown={key:an.key,t:0,rar:an.rar}; SFX.play('reveal',an.rar); buzz(an.rar==='mythic'?[60,40,60,40,60,40,200]:an.rar==='legendary'?[50,50,50,50,160]:an.rar==='epic'?[40,60,40,60,140]:an.rar==='rare'?[40,50,80]:40);
       const sp=SPECIES[an.key];
       $('#reveal').innerHTML=`<span><span class="chip ${an.rar}">${RARITY[an.rar].label}</span> <span class="chip ${sp.el}">${ELEM[sp.el].name}</span></span><b>${sp.name}</b><span>${an.msg}</span>`;}
     if(an.t>2.0){A.anim=null; renderAltar();}
@@ -96,7 +102,8 @@ export function drawAltar(dt){
 /* ---------- card collection ---------- */
 type SortMode='rarity'|'level'|'element'|'fodder';
 let sortBy: SortMode='rarity', sheetId: number|null=null;
-export const RORD={epic:0,rare:1,common:2}, EORD=Object.fromEntries(ELEM_ORDER.map((k,i)=>[k,i]));
+/** Sort position per rarity, rarest first. */
+export const RORD: Record<RarityKey, number>={mythic:0,legendary:1,epic:2,rare:3,common:4}, EORD=Object.fromEntries(ELEM_ORDER.map((k,i)=>[k,i]));
 export function sortCards(list,mode){
   return [...list].sort((a,b)=>{
     const sa=SPECIES[a.sp],sb=SPECIES[b.sp];

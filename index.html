@@ -37,7 +37,7 @@
         <dt>Swipe down</dt><dd>Parry. When an enemy winds up, a red ring closes on your beast. Swipe down once it turns gold to block the hit and counter.</dd>
         <dt>Portraits</dt><dd>Tap one to swap beasts mid-fight.</dd>
       </dl>
-      <details class="echart"><summary>Element chart · strong hits do ×1.5</summary><table id="elemT"></table><p>Radiant and Umbral are strong against each other and neutral to everything else.</p></details>
+      <details class="echart"><summary>Element chart · strong hits do ×1.5</summary><table id="elemT"></table><p>Radiant and Umbral are strong against each other and neutral to everything else. Specials always apply their effect; slashes sometimes do. Enemies inflict effects too, and a parry blocks them. Combos: Soak + Shock doubles the shock, and Soak + Chill freezes at once.</p></details>
       <div class="keys">Keyboard: <kbd>J</kbd> strike · <kbd>K</kbd> slash · <kbd>I</kbd> special · <kbd>Space</kbd> parry · <kbd>1</kbd>–<kbd>3</kbd> swap</div>
     </div>
     <div class="navrow settings"><button id="btnSound">Sound: On</button><button id="btnHaptic">Vibration: On</button></div>
@@ -50,11 +50,13 @@
       <div class="pline"><b id="eName">—</b><span class="lv" id="eLvl"></span><span class="chip" id="eEl"></span><span class="chip boss" id="eBoss" hidden>Boss</span><span class="num" id="eHpT"></span></div>
       <span class="bar enemy"><i id="eHp"></i></span>
       <span class="mu" id="eMu" hidden></span>
+      <div class="sts" id="eSt" aria-label="Enemy status effects"></div>
     </div>
     <div id="field"><canvas id="fieldCan"></canvas><div id="banner"></div></div>
     <div class="panel" id="pPanel">
       <div class="pline"><b id="pName">—</b><span class="lv" id="pLvl"></span><span class="chip" id="pEl"></span><span class="num" id="pHpT"></span></div>
       <span class="bar"><i id="pHp"></i></span>
+      <div class="sts" id="pSt" aria-label="Your status effects"></div>
       <div class="elabel"><span>Energy</span><span id="eReady"></span></div>
       <span class="bar energy"><i id="pEn"></i></span>
     </div>

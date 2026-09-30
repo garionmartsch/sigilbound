@@ -1,9 +1,14 @@
 export type ElementKey =
   | 'pyre' | 'tide' | 'thorn' | 'frost' | 'storm' | 'stone' | 'gale' | 'radiant' | 'umbral';
 
-export type RarityKey = 'common' | 'rare' | 'epic';
+export type RarityKey = 'common' | 'rare' | 'epic' | 'legendary' | 'mythic';
 
-export type BodyType = 'brute' | 'wisp' | 'serpent' | 'avian' | 'golem';
+export type BodyType = 'brute' | 'wisp' | 'serpent' | 'avian' | 'golem' | 'beast' | 'drake';
+
+/** Add-on parts that can go on any body. */
+export type WingStyle = 'bat' | 'feather';
+export type TailStyle = 'spike' | 'flame' | 'leaf' | 'fin';
+export type PatternStyle = 'stripes' | 'spots' | 'runes';
 
 export interface ElementInfo {
   name: string;
@@ -44,12 +49,23 @@ export interface Species {
   /** Attack tempo multiplier; above 1 attacks more often. */
   spd: number;
   special: string;
+  /** Names of the three forms: base, evolved, final. forms[0] matches name. */
+  forms: [string, string, string];
+  /** One-sentence description of the base form, used for art prompts. */
+  look?: string;
+  /** How the evolved and final forms change, used for art prompts. */
+  evoLooks?: [string, string];
+  /** Made by tools/generate-commons.ts rather than designed by hand. */
+  generated?: boolean;
   // Optional features for the code-drawn bodies.
   horns?: number;
   eyes?: number;
   spikes?: boolean;
   fins?: boolean;
   crown?: boolean;
+  wings?: WingStyle;
+  tail?: TailStyle;
+  pattern?: PatternStyle;
   /** Evolution stage, set only while drawing. */
   evo?: number;
 }

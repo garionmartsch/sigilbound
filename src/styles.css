@@ -37,6 +37,11 @@ button.ghost{background:transparent;border-color:transparent;color:var(--muted);
 .echart td{padding:5px 6px 5px 0;border-top:1px solid var(--line);color:var(--muted);vertical-align:top}
 .echart p{margin:8px 0 0;font-size:13px;color:var(--muted)}
 .chip.common{color:#B9ACC8} .chip.rare{color:#7CC0EE} .chip.epic{color:var(--gold)}
+.chip.legendary{color:#FF9A5A} .chip.mythic{color:#F28CFF}
+.card.r-legendary{box-shadow:0 0 12px rgba(255,154,90,.35)}
+.card.r-mythic{animation:mythicGlow 4s ease-in-out infinite}
+@keyframes mythicGlow{0%,100%{box-shadow:0 0 14px rgba(242,140,255,.45)}33%{box-shadow:0 0 14px rgba(124,192,238,.45)}66%{box-shadow:0 0 14px rgba(255,224,138,.45)}}
+@media (prefers-reduced-motion: reduce){.card.r-mythic{animation:none;box-shadow:0 0 14px rgba(242,140,255,.45)}}
 .chip.boss{color:var(--danger)}
 
 /* Home */
@@ -178,3 +183,8 @@ button.danger{color:#FFB8B8;border-color:#6B2E3A}
 .odds th{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;text-align:left;padding-bottom:4px}
 .odds td.n,.odds th.n{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;padding-inline:8px;white-space:nowrap}
 @media (prefers-reduced-motion: reduce){ #banner.go{animation-duration:2s} .ready .elabel span:last-child{animation:none} }
+
+/* status effect chips */
+.sts{display:flex;gap:4px;flex-wrap:wrap}
+.sts:empty{display:none}
+.sts span{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:0 6px;border-radius:999px;border:1px solid currentColor;line-height:1.5;font-variant-numeric:tabular-nums}

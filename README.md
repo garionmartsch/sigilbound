@@ -21,7 +21,9 @@ npm run dev      # start the game with live reload
 | `npm run build` | Type-check, then build the finished game into `dist/` |
 | `npm run preview` | Serve the built `dist/` folder to try the production build |
 | `npm run typecheck` | Check the TypeScript without building |
-| `npm test` | Run the game-rule tests |
+| `npm test` | Run the game-rule and status-effect tests |
+| `npm run gen:commons` | Regenerate the common beasts (see below) |
+| `npm run gen:prompts` | Rebuild the Gemini prompt sheet from the beast data |
 
 Every push to GitHub runs the type check, the tests and the build automatically. See the **Actions** tab.
 
@@ -39,7 +41,8 @@ Every push to GitHub runs the type check, the tests and the build automatically.
 
 - **Combat:** swipe gestures, parry timing, hit-stop and knockback, elemental specials, three-wave stages with bosses.
 - **Nine elements:** Pyre, Tide, Thorn, Frost, Storm, Stone and Gale form a wheel where each is strong against two and weak to two. Radiant and Umbral are strong against each other.
-- **21 beasts, three forms each:** five body types drawn in code, with image art replacing them as it's added.
+- **Status effects:** every element leaves a mark. Burn, Soak, Poison, Chill (which becomes Freeze), Shock, Sunder, Daze, Bless and Curse, with combos (Soak + Shock doubles the shock; Soak + Chill freezes at once). Enemies inflict them too; a parry blocks them.
+- **96 beasts, three forms each (288 creatures):** 64 hand-designed plus 32 generated commons, across five rarities from Common to Mythic. Seven body types plus add-on wings, tails and markings are drawn in code, with image art replacing them as it's added.
 - **Cards:** every summon or drop is its own card. You can feed cards to level up and raise skill level, evolve at max level by merging two copies, lock or sell cards, and choose a team of three.
 - **Economy:** soul shards for Rift Summons (all rarities, odds shown), gold for Beast Calls (mostly commons), and battle card drops.
 - **Sound and vibration:** synthesized sound effects with no audio files, plus vibration on Android.
@@ -51,7 +54,12 @@ index.html          Page markup: every screen's layout
 src/
   main.ts           Starts the game: main loop, card portraits
   types.ts          Shared types: Card, Species, SaveData and so on
-  data.ts           Elements, rarities, all beasts and their forms, card rules (XP, stats, costs)
+  data.ts           Elements, rarities, card rules (XP, stats, costs)
+  beasts/
+    core.ts         Hand-designed beasts: stats, looks, forms, art-prompt descriptions
+    generated.ts    Common beasts made by tools/generate-commons.ts (don't edit by hand)
+    art.ts          Which beasts have image art
+  status.ts         Status effect rules and tuning numbers
   save.ts           The player's save: loading, upgrading old saves, storing progress
   battle.ts         Fights: enemies, attacks, specials, parry, rewards, touch input, HUD
   fx.ts             Battle effects: slashes, fireballs, vines, waves, lightning and more
@@ -64,12 +72,19 @@ src/
 public/art/         Beast art as <beast>_<form>.webp (0 base, 1 evolved, 2 final)
 tests/              Game-rule tests (npm test)
 docs/               Gemini art prompts for every beast and form
-tools/cutout.py     Removes backgrounds from generated art and exports it to public/art/
+tools/
+  cutout.py         Removes backgrounds from generated art and exports it to public/art/
+  generate-commons.ts  Makes common beasts from element themes and body types
+  build-prompts.ts  Rebuilds docs/art-prompts.html from the beast data
 ```
 
 ## Common changes
 
-**Add or rebalance a beast.** Edit `SPECIES` and `FORMS` in `src/data.ts`. `npm test` checks that every beast has a valid element, a rarity and three form names.
+**Add or rebalance a beast.** Add it to `src/beasts/core.ts` with its stats, colors, body type, parts, forms and a one-line `look`, then run `npm run gen:prompts` so it gets Gemini prompts. `npm test` checks every beast has a valid element, rarity, unique names and three forms. Never rename a beast's key once it has shipped; players' saves store it.
+
+**Grow the roster toward 500.** Raise the count: `npx tsx tools/generate-commons.ts 20` makes 20 commons per element (Radiant and Umbral get half). Existing generated beasts keep their keys and names, so players' cards are safe. Add rares and above by hand in `core.ts`.
+
+**Tune status effects.** Durations, damage and chances are in `STATUS` at the top of `src/status.ts`.
 
 **Tune the economy.** Level caps, XP, sell prices and evolve costs are in `RARITY` and the card rules in `src/data.ts`. Battle rewards and drop chances are in `hitEnemy` in `src/battle.ts`.
 
@@ -80,7 +95,7 @@ tools/cutout.py     Removes backgrounds from generated art and exports it to pub
    pip install -r tools/requirements.txt
    python tools/cutout.py ashwing base.png evolved.png final.png
    ```
-3. Add the beast to `ART_FILES` in `src/render.ts`:
+3. Add the beast to `ART_FILES` in `src/beasts/art.ts`, then run `npm run gen:prompts` to mark it done on the prompt sheet:
    ```ts
    export const ART_FILES: Record<string, number[]> = { cindermaw: [0, 1, 2], ashwing: [0, 1, 2] };
    ```

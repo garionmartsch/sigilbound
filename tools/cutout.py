@@ -7,8 +7,8 @@ Example:
     python tools/cutout.py ashwing ~/Downloads/ashwing1.png ~/Downloads/ashwing2.png ~/Downloads/ashwing3.png
 
 Writes public/art/<beast_key>_0.webp, _1.webp and _2.webp. Afterwards, add
-the beast to ART_FILES in src/render.ts, for example:
-    export const ART_FILES: Record<string, number[]> = { cindermaw: [0, 1, 2], ashwing: [0, 1, 2] };
+the beast to ART_FILES in src/beasts/art.ts, for example:
+    ashwing: [0, 1, 2],
 
 How it works: the background colour is sampled from the image border. Pixels
 close to that colour AND connected to the image edge are made transparent,
@@ -64,7 +64,7 @@ def main() -> None:
         w, h = cutout(Path(path).expanduser(), out)
         print(f"{out.relative_to(art_dir.parent.parent)}  {w}x{h}")
     forms = ",".join(str(i) for i in range(len(images)))
-    print(f"\nNow add  {key}: [{forms}]  to ART_FILES in src/render.ts.")
+    print(f"\nNow add  {key}: [{forms}]  to ART_FILES in src/beasts/art.ts, then run: npx tsx tools/build-prompts.ts")
 
 
 if __name__ == "__main__":

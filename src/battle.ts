@@ -4,7 +4,8 @@ import { newCard, persist, save, teamMembers } from './save';
 import { current, show } from './screens';
 import { SFX, buzz } from './sfx';
 import { FXDRAW, fbPos, ribbon, tornadoX, waveX, type Fx } from './fx';
-import type { Card, ElementKey, Species } from './types';
+import { applyStatus, cleanse, damageDealtMult, damageTakenMult, drainFrom, rollDazeMiss, STATUS, STATUS_INFO, statusList, tempo, tickStatus, type StatusState } from './status';
+import type { Card, ElementKey, RarityKey, Species } from './types';
 import { $, $$, RM, clamp, ell, fit, pick, rand, rgba } from './util';
 
 /* ---------- battle state ---------- */
@@ -15,6 +16,10 @@ export interface Unit {
   dead: boolean; fade: number; flash: number;
   /** 0..1 knockback after being hit. */
   kb?: number;
+  /** Active status effects. */
+  st: StatusState;
+  /** Damage-over-time waiting to be shown, and time until it is. */
+  dotAcc: number; dotT: number;
 }
 /** The current enemy. */
 export interface Enemy {
@@ -31,6 +36,8 @@ export interface Enemy {
   kb?: number;
   /** The parry-window sound has played for this wind-up. */
   ticked?: boolean;
+  st: StatusState;
+  dotAcc: number; dotT: number;
 }
 type ParticleKind = 'spark' | 'ember' | 'drop' | 'leaf' | 'shard' | 'dust' | 'mote';
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; r: number; kind: ParticleKind; rot: number; vr: number }
@@ -76,15 +83,22 @@ export const cur=(): Unit|undefined=>B?B.team[B.active]:undefined;
 export function makeEnemy(stage: number,wave: number): Enemy{
   const boss=wave===3;
   const keys=Object.keys(SPECIES);
-  const key=boss?pick(keys.filter(k=>SPECIES[k].rarity!=='common')):pick(keys.filter(k=>SPECIES[k].rarity!=='epic'));
+  // Which rarities can appear: bosses get rarer beasts as stages climb.
+  const allowed: RarityKey[]=boss
+    ? ['rare','epic',...(stage>=8?['legendary' as const]:[]),...(stage>=15?['mythic' as const]:[])]
+    : ['common','rare',...(stage>=5?['epic' as const]:[])];
+  let pool=keys.filter(k=>allowed.includes(SPECIES[k].rarity));
+  // Top rarities show up only sometimes, so a boss is usually rare or epic.
+  if(boss&&Math.random()<0.75) pool=pool.filter(k=>SPECIES[k].rarity==='rare'||SPECIES[k].rarity==='epic');
+  const key=pick(pool);
   const sp=SPECIES[key], lvl=stage+wave-1+(boss?1:0);
   const evo=boss?(stage>=7?2:stage>=3?1:0):(stage>=6?1:0), k=(1+0.1*(lvl-1))*(1+0.35*evo);
   const maxHp=Math.round(sp.hp*k*(boss?2.1:0.9));
-  return {key,sp,evo,name:FORMS[key][evo],lvl,boss,hp:maxHp,maxHp,atk:sp.atk*k*(boss?1.1:0.8),state:'idle' as const,timer:rand(1.5,2.1),windup:boss?0.95:0.85,
+  return {key,sp,evo,name:FORMS[key][evo],lvl,boss,hp:maxHp,maxHp,atk:sp.atk*k*(boss?1.1:0.8),state:'idle' as const,st:{},dotAcc:0,dotT:0,timer:rand(1.5,2.1),windup:boss?0.95:0.85,
     flash:0,lunge:0,dead:false,fade:1,spawn:0};
 }
 export function startBattle(){
-  const team=teamMembers().map(m=>{const st=statsOf(m);return {m,sp:SPECIES[m.sp],name:nameOf(m),evo:m.evo||0,skill:m.skill||1,hp:st.maxHp,maxHp:st.maxHp,atk:st.atk,energy:0,dead:false,fade:1,flash:0}});
+  const team=teamMembers().map(m=>{const st=statsOf(m);return {m,sp:SPECIES[m.sp],name:nameOf(m),evo:m.evo||0,skill:m.skill||1,hp:st.maxHp,maxHp:st.maxHp,atk:st.atk,energy:0,dead:false,fade:1,flash:0,st:{},dotAcc:0,dotT:0}});
   if(!team.length) return;
   const b: Battle={team,active:0,stage:save.stage,wave:0,enemy:null,cd:0,swapCd:0,parry:0,parryCd:0,buffered:null,fx:[],hitstop:0,flash:0,flashCol:'#FFFFFF',lunge:0,pSpawn:1,
     parts:[],texts:[],trail:[],shake:0,time:0,over:false,earned:0,gold:0,drops:[],timers:[],
@@ -128,6 +142,7 @@ export function playerAct(kind: ActKind,ang?: number){const bt=B; if(!bt) return
   if(!bt||bt.over) return;
   const u=cur(), e=bt.enemy;
   if(!u||u.dead||!e||e.dead||e.spawn<1||bt.pSpawn<1) return;
+  if(u.st.freeze){ if(Math.random()<0.3){const g0=geo(); ftext(g0.P.x,g0.P.y-g0.s*1.4,'Frozen!','#BFEFFF',16,0.6)} return; }
   if(bt.cd>0){ if(bt.cd<0.3) bt.buffered={kind,ang}; return; }
   if(kind==='special'&&u.energy<100) kind='slash';
   let mult,cd,gain;
@@ -136,9 +151,10 @@ export function playerAct(kind: ActKind,ang?: number){const bt=B; if(!bt) return
   else {mult=2.8*(1+0.12*((u.skill||1)-1));cd=1.1;gain=0;u.energy=0}
   bt.cd=cd; u.energy=Math.min(100,u.energy+gain);
   const em=elemMult(u.sp.el,e.sp.el);
-  const dmg=Math.max(1,Math.round(u.atk*mult*em*rand(0.9,1.1)));
+  const dmg=Math.max(1,Math.round(u.atk*mult*em*rand(0.9,1.1)*damageDealtMult(u.st)*damageTakenMult(e.st)));
   const g=geo(), col=ELEM[u.sp.el].color;
   if(kind==='special'){castSpecial(u,e,dmg,em);return}
+  if(rollDazeMiss(u.st)){bt.lunge=1; SFX.play('guard'); ftext(g.E.x,g.E.y-g.s*0.6,'Miss','#B7A9C6',22,0.8); return}
   bt.lunge=1;
   if(kind==='tap'){
     SFX.play('tap'); buzz(8);
@@ -152,13 +168,64 @@ export function playerAct(kind: ActKind,ang?: number){const bt=B; if(!bt) return
     bt.hitstop=0.07;
   }
   hitEnemy(dmg,em,kind);
+  if(kind==='slash'&&Math.random()<STATUS.hitChance.player) inflictOnEnemy(u,false);
+}
+
+/* ---------- status effects in battle ---------- */
+/** The active beast's element lands its effect on the enemy. */
+function inflictOnEnemy(u: Unit, special: boolean){const bt=B; if(!bt) return;
+  const e=bt.enemy; if(!e||e.dead) return;
+  const g=geo(), el=u.sp.el, col=ELEM[el].color;
+  const r=applyStatus(e.st,el,u.atk,special,true);
+  if(el==='radiant'){
+    // Bless heals the player's side and clears their ailments.
+    bt.team.forEach(x=>{if(!x.dead){x.hp=Math.min(x.maxHp,x.hp+Math.round(x.maxHp*r.heal))}});
+    cleanse(u.st);
+    ftext(g.P.x,g.P.y-g.s*1.45,`Blessed +${Math.round(r.heal*100)}%`,col,18,1.1);
+    elemBurst(g.P.x,g.P.y,'radiant',16,220,0.8);
+    return;
+  }
+  if(r.label) ftext(g.E.x,g.E.y-g.s*1.6,r.label,col,17,1.1);
+  if(r.bonusDamage) damageEnemy(r.bonusDamage,col);
+  if(e.dead) return;
+  if(e.state==='windup'&&(r.froze||(r.interruptChance&&Math.random()<r.interruptChance))){
+    e.state='idle'; e.timer=rand(1.4,2.0);
+    if(!r.froze) ftext(g.E.x,g.E.y-g.s*1.95,'Stunned!','#FFF6B0',17,1);
+  }
+}
+/** The enemy's element lands its effect on the player's active beast. */
+function inflictOnPlayer(e: Enemy, u: Unit){const bt=B; if(!bt) return;
+  const g=geo(), el=e.sp.el, col=ELEM[el].color;
+  const r=applyStatus(u.st,el,e.atk,false,false);
+  if(el==='radiant'){
+    e.hp=Math.min(e.maxHp,e.hp+Math.round(e.maxHp*r.heal)); cleanse(e.st);
+    ftext(g.E.x,g.E.y-g.s*1.6,'Blessed','#FFE08A',17,1);
+    return;
+  }
+  if(r.label) ftext(g.P.x,g.P.y-g.s*1.45,r.label,col,17,1.1);
+  if(r.bonusDamage) damageUnit(u,r.bonusDamage,col);
+  if(r.interruptChance){u.energy=Math.max(0,u.energy-25); bt.parry=0}
+}
+/** Damage from effects (burns, shocks), shown as a smaller colored number. */
+function damageEnemy(amount: number, color: string){const bt=B; if(!bt) return;
+  const e=bt.enemy; if(!e||e.dead) return;
+  const g=geo(), n=Math.max(1,Math.round(amount));
+  e.hp-=n; ftext(g.E.x+rand(-g.s*0.5,g.s*0.5),g.E.y-g.s*0.2,String(n),color,17,0.8);
+  if(e.hp<=0) enemyDefeated();
+}
+function damageUnit(u: Unit, amount: number, color: string){const bt=B; if(!bt) return;
+  if(u.dead) return;
+  const g=geo(), n=Math.max(1,Math.round(amount));
+  u.hp-=n;
+  if(u===cur()) ftext(g.P.x+rand(-g.s*0.5,g.s*0.5),g.P.y-g.s*0.2,String(n),color,17,0.8);
+  if(u.hp<=0) unitDown(u);
 }
 export function castSpecial(u: Unit,e: Enemy,dmg: number,em: number){const bt=B; if(!bt) return;
   const g=geo(), s=g.s, el=u.sp.el, col=ELEM[el].color;
   ftext(g.w/2,g.h*0.52,u.sp.special,col,28,1.4);
   if(e.state==='windup'){e.state='idle';e.timer=rand(1.6,2.2);ftext(g.E.x,g.E.y-s*1.6,'Staggered!','#F0E8F5',20,1)}
   fx({type:'charge',x:g.P.x,y:g.P.y,r:s*1.8,color:col,dur:0.28}); SFX.play('charge'); buzz(20);
-  const land=()=>{ if(!bt||bt.enemy!==e||e.dead) return; bt.flash=0.55; bt.flashCol=col; bt.hitstop=0.14; shake(1); SFX.play('hit'); buzz(70); hitEnemy(dmg,em,'special'); };
+  const land=()=>{ if(!bt||bt.enemy!==e||e.dead) return; bt.flash=0.55; bt.flashCol=col; bt.hitstop=0.14; shake(1); SFX.play('hit'); buzz(70); hitEnemy(dmg,em,'special'); inflictOnEnemy(u,true); };
   if(el==='pyre'){
     bt.timers.push({t:0.28,fn:()=>{ bt.lunge=1; SFX.play('fireball');
       fx({type:'fireball',x0:g.P.x+s*0.5,y0:g.P.y-s*0.4,x1:g.E.x,y1:g.E.y,r:s*0.4,dur:0.42,end:()=>{
@@ -205,8 +272,15 @@ export function hitEnemy(dmg: number,em: number,kind: ActKind){const bt=B; if(!b
   if(em>1&&kind!=='tap') ftext(g.E.x,g.E.y-g.s*1.25,'Super effective','#E7BE6E',16,1);
   if(em<1&&kind!=='tap') ftext(g.E.x,g.E.y-g.s*1.25,'Resisted','#A898B9',15,0.9);
   shake(kind==='tap'?0.15:0.4);
-  if(e.hp<=0&&!e.dead){
-    e.hp=0; e.dead=true; e.state='dead';
+  const drain=drainFrom(e.st);
+  if(drain&&u&&!u.dead){const h=Math.round(dmg*drain); u.hp=Math.min(u.maxHp,u.hp+h); ftext(g.P.x,g.P.y-g.s*1.2,`+${h}`,'#B58BF0',16,0.8)}
+  if(e.hp<=0) enemyDefeated();
+}
+/** The enemy's health reached zero: rewards, drops, and the next wave. */
+function enemyDefeated(){const bt=B; if(!bt) return;
+  const e=bt.enemy,g=geo(); if(!e||e.dead) return;
+  {
+    e.hp=0; e.dead=true; e.state='dead'; cleanse(e.st);
     fx({type:'explosion',x:g.E.x,y:g.E.y,r:g.s*2.6,color:ELEM[e.sp.el].color,dur:0.8});
     elemBurst(g.E.x,g.E.y,e.sp.el,70,420,0.4); shake(0.9); SFX.play('kill'); buzz([30,40,90]);
     bt.hitstop=Math.max(bt.hitstop,0.18); bt.flash=Math.max(bt.flash,0.4); bt.flashCol='#FFF4DC';
@@ -234,15 +308,25 @@ export function enemyStrike(){const bt=B; if(!bt) return;
     bt.timers.push({t:0.12,fn:()=>{const e2=bt.enemy,u2=cur(); if(e2&&!e2.dead&&u2&&!u2.dead){bt.lunge=1; slashFx(g.E.x,g.E.y-g.s*0.1,rand(-0.6,0.6),ELEM[u2.sp.el].color,u2.sp.body,g.s); hitEnemy(cdmg,1,'slash')}}});
     return;
   }
+  if(rollDazeMiss(e.st)){ftext(g.P.x,g.P.y-g.s*1.2,'Miss!','#9FDCC0',22,0.9); SFX.play('guard'); return}
   u.energy=Math.min(100,u.energy+6);
-  const dmg=Math.max(1,Math.round(e.atk*em*rand(0.9,1.1)));
+  const dmg=Math.max(1,Math.round(e.atk*em*rand(0.9,1.1)*damageDealtMult(e.st)*damageTakenMult(u.st)));
   u.hp-=dmg; u.flash=1; u.kb=1; shake(0.6); bt.hitstop=0.05; SFX.play('hurt'); buzz(45);
+  const drain=drainFrom(u.st);
+  if(drain){e.hp=Math.min(e.maxHp,e.hp+Math.round(dmg*drain))}
   const toP=Math.atan2(g.P.y-g.E.y,g.P.x-g.E.x);
   slashFx(g.P.x,g.P.y-g.s*0.1,toP+Math.PI/2+rand(-0.4,0.4),ELEM[e.sp.el].color,e.sp.body,g.s*0.9,0.36);
   elemBurst(g.P.x,g.P.y,e.sp.el,14,260);
   ftext(g.P.x+rand(-20,20),g.P.y-g.s*0.6,String(dmg),'#FF8A8A',24);
-  if(u.hp<=0){
-    u.hp=0; u.dead=true; bt.parry=0;
+  if(u.hp>0&&Math.random()<(e.boss?STATUS.hitChance.boss:STATUS.hitChance.enemy)) inflictOnPlayer(e,u);
+  if(u.hp<=0) unitDown(u);
+}
+/** One of the player's beasts was knocked out: switch to the next, or lose. */
+function unitDown(u: Unit){const bt=B; if(!bt) return;
+  const g=geo();
+  if(u.dead) return;
+  {
+    u.hp=0; u.dead=true; bt.parry=0; cleanse(u.st);
     ftext(g.P.x,g.P.y-g.s*1.2,`${u.name} fell`,'#E0455A',18,1.2);
     bt.timers.push({t:0.8,fn:()=>{
       if(!cur()?.dead) return;
@@ -300,13 +384,38 @@ export function updateBattle(dt){const bt=B; if(!bt) return;
   bt.flash=Math.max(0,bt.flash-dt*2.2); bt.shake=Math.max(0,bt.shake-dt*3);
   if(bt.hitstop>0){bt.hitstop-=dt; return;}
   bt.time+=dt;
-  bt.cd=Math.max(0,bt.cd-dt); bt.swapCd=Math.max(0,bt.swapCd-dt);
+  const au=cur();
+  bt.cd=Math.max(0,bt.cd-dt*(au?tempo(au.st):1)); bt.swapCd=Math.max(0,bt.swapCd-dt);
   bt.lunge=Math.max(0,bt.lunge-dt/0.22);
   bt.pSpawn=Math.min(1,bt.pSpawn+dt/0.45);
   bt.parry=Math.max(0,bt.parry-dt); bt.parryCd=Math.max(0,bt.parryCd-dt);
   if(bt.cd===0&&bt.buffered){const k=bt.buffered;bt.buffered=null;playerAct(k.kind,k.ang)}
   bt.team.forEach(u=>{u.flash=Math.max(0,u.flash-dt*5); u.kb=Math.max(0,(u.kb||0)-dt*5); if(u.dead)u.fade=Math.max(0,u.fade-dt*1.6)});
   for(let i=bt.timers.length-1;i>=0;i--){const tm=bt.timers[i]; tm.t-=dt; if(tm.t<=0){bt.timers.splice(i,1); tm.fn(); if(!bt) return;}}
+  // Status effects: count down, and apply damage over time in half-second pulses.
+  const g=geo();
+  bt.team.forEach(u=>{
+    if(u.dead) return;
+    u.dotAcc+=tickStatus(u.st,dt); u.dotT-=dt;
+    if(u.dotT<=0){u.dotT=0.5; if(u.dotAcc>=1){const n=Math.floor(u.dotAcc); u.dotAcc-=n; damageUnit(u,n,u.st.poison?'#A7D46F':'#FF8A3D')}}
+  });
+  if(bt.enemy&&!bt.enemy.dead){
+    const e=bt.enemy;
+    e.dotAcc+=tickStatus(e.st,dt); e.dotT-=dt;
+    if(e.dotT<=0){e.dotT=0.5; if(e.dotAcc>=1){const n=Math.floor(e.dotAcc); e.dotAcc-=n; damageEnemy(n,e.st.poison?'#A7D46F':'#FF8A3D')}}
+  }
+  // Ambient particles so ailments are visible on the field.
+  if(Math.random()<dt*6){
+    const pairs: [StatusState,number,number][]=[];
+    if(bt.enemy&&!bt.enemy.dead) pairs.push([bt.enemy.st,g.E.x,g.E.y]);
+    if(au&&!au.dead) pairs.push([au.st,g.P.x,g.P.y]);
+    pairs.forEach(([st,x,y])=>{
+      if(st.burn) elemBurst(x+rand(-1,1)*g.s*0.5,y,'pyre',1,60,0.8);
+      if(st.poison) elemBurst(x+rand(-1,1)*g.s*0.5,y,'thorn',1,40,0.6);
+      if(st.soak) elemBurst(x+rand(-1,1)*g.s*0.6,y-g.s*0.6,'tide',1,30,-0.5);
+      if(st.curse) elemBurst(x+rand(-1,1)*g.s*0.5,y,'umbral',1,40,0.7);
+    });
+  }
   const e=bt.enemy;
   if(e){
     e.flash=Math.max(0,e.flash-dt*5); e.lunge=Math.max(0,e.lunge-dt/0.25); e.kb=Math.max(0,(e.kb||0)-dt*5);
@@ -314,7 +423,7 @@ export function updateBattle(dt){const bt=B; if(!bt) return;
     else {
       e.spawn=Math.min(1,e.spawn+dt/0.6);
       if(e.spawn>=1&&!bt.over&&!cur()?.dead){
-        e.timer-=dt;
+        e.timer-=dt*tempo(e.st);
         if(e.state==='idle'&&e.timer<=0){e.state='windup';e.timer=e.windup;e.ticked=false;SFX.play('warn')}
         else if(e.state==='windup'&&!e.ticked&&e.timer<=PARRY){e.ticked=true;SFX.play('window')}
         else if(e.state==='windup'&&e.timer<=0){enemyStrike(); e.state='idle'; e.timer=rand(1.7,2.7)/e.sp.spd*(e.boss?0.85:1)}
@@ -339,6 +448,17 @@ export function updateBattle(dt){const bt=B; if(!bt) return;
 }
 
 
+/** A block of ice over a frozen beast. */
+function drawIce(c: CanvasRenderingContext2D, x: number, y: number, s: number, t: number){
+  c.save(); c.translate(x,y-s*0.15);
+  const g=c.createLinearGradient(-s,-s*1.1,s,s*0.9);
+  g.addColorStop(0,'rgba(220,248,255,0.55)'); g.addColorStop(0.5,'rgba(143,211,232,0.35)'); g.addColorStop(1,'rgba(90,160,210,0.5)');
+  c.fillStyle=g; c.strokeStyle='rgba(255,255,255,0.85)'; c.lineWidth=2;
+  c.beginPath(); c.moveTo(-s*0.95,-s*0.9); c.lineTo(s*0.2,-s*1.2); c.lineTo(s*1.0,-s*0.7); c.lineTo(s*0.95,s*0.9); c.lineTo(-s*0.3,s*1.05); c.lineTo(-s*1.05,s*0.6); c.closePath(); c.fill(); c.stroke();
+  c.strokeStyle=`rgba(255,255,255,${0.4+0.3*Math.sin(t*4)})`; c.lineWidth=3;
+  c.beginPath(); c.moveTo(-s*0.6,-s*0.7); c.lineTo(-s*0.2,-s*0.2); c.moveTo(s*0.5,-s*0.6); c.lineTo(s*0.7,-s*0.1); c.stroke();
+  c.restore();
+}
 export function drawBattle(){const bt=B; if(!bt) return;
   const f=fit(fieldCv); if(!f) return; const {c,w,h}=f; const g=geo(); const s=g.s; const t=bt.time;
   c.clearRect(0,0,w,h);
@@ -368,6 +488,7 @@ export function drawBattle(){const bt=B; if(!bt) return;
     if(e.state==='windup'){const pr=1-e.timer/e.windup; red=pr; wob=Math.sin(t*50)*s*0.03*pr}
     const sc=(e.dead?0.6+0.4*e.fade:0.6+0.4*e.spawn)*es;
     drawMonster(c,e.key,g.E.x+ox+wob,g.E.y+oy,s,t*(e.sp.spd)+1.7,{dir:-1,evo:e.evo,flash:e.flash,red,alpha:e.dead?e.fade:e.spawn,scale:sc,sx:1+0.14*kb,sy:1-0.12*kb,glow:e.boss?rgba(ELEM[e.sp.el].color,0.7):null});
+    if(e.st.freeze&&!e.dead) drawIce(c,g.E.x+ox,g.E.y+oy,s*es,t);
     if(e.state==='windup'&&!e.dead){
       c.font=`800 ${Math.round(s*0.6)}px ${getComputedStyle(document.body).getPropertyValue('--display')}`; c.textAlign='center'; c.fillStyle='#FF5A64';
       c.fillText('!',g.E.x,g.E.y-s*1.55*es);
@@ -379,6 +500,7 @@ export function drawBattle(){const bt=B; if(!bt) return;
     const ox=vx*0.3*ph-ux*kbo, oy=vy*0.3*ph-uy*kbo;
     const sc=0.6+0.4*bt.pSpawn;
     drawMonster(c,u.m.sp,g.P.x+ox,g.P.y+oy,s,t*u.sp.spd,{dir:1,evo:u.evo,flash:u.flash,alpha:u.dead?u.fade:bt.pSpawn,scale:sc,sx:1+0.12*kb,sy:1-0.1*kb});
+    if(u.st.freeze&&!u.dead) drawIce(c,g.P.x+ox,g.P.y+oy,s,t);
     if(bt.parry>0&&!u.dead){
       c.save(); c.globalAlpha=Math.min(1,bt.parry/PARRY*1.5); c.translate(g.P.x+s*0.55,g.P.y-s*0.1);
       c.strokeStyle='rgba(231,190,110,0.9)'; c.lineWidth=4; c.shadowColor='#E7BE6E'; c.shadowBlur=14;
@@ -424,8 +546,14 @@ export function drawBattle(){const bt=B; if(!bt) return;
   if(bt.flash>0){c.fillStyle=rgba(bt.flashCol||'#FFFFFF',Math.min(0.5,bt.flash*0.6)); c.fillRect(0,0,w,h);}
 }
 
-export const hud={eName:$('#eName'),eLvl:$('#eLvl'),eEl:$('#eEl'),eBoss:$('#eBoss'),eHp:$('#eHp'),eHpT:$('#eHpT'),pName:$('#pName'),pLvl:$('#pLvl'),pEl:$('#pEl'),pHp:$('#pHp'),pHpT:$('#pHpT'),pEn:$('#pEn'),eReady:$('#eReady'),pPanel:$('#pPanel'),stage:$('#bStage'),eMu:$('#eMu')};
+export const hud={eName:$('#eName'),eLvl:$('#eLvl'),eEl:$('#eEl'),eBoss:$('#eBoss'),eHp:$('#eHp'),eHpT:$('#eHpT'),pName:$('#pName'),pLvl:$('#pLvl'),pEl:$('#pEl'),pHp:$('#pHp'),pHpT:$('#pHpT'),pEn:$('#pEn'),eReady:$('#eReady'),pPanel:$('#pPanel'),stage:$('#bStage'),eMu:$('#eMu'),eSt:$('#eSt'),pSt:$('#pSt')};
 export function setText(el: HTMLElement,v: string){if(el.textContent!==v)el.textContent=v}
+/** Status chips, e.g. "Burn 3s" or "Poison x2 5s", colored by element. */
+function renderStatus(el: HTMLElement, st: StatusState){
+  const html=statusList(st).map(({key,t,stacks})=>{const info=STATUS_INFO[key];
+    return `<span style="color:${ELEM[info.el].color}">${info.label}${stacks&&stacks>1?' x'+stacks:''} ${Math.ceil(t)}s</span>`}).join('');
+  if(el.innerHTML!==html) el.innerHTML=html;
+}
 export function updateHud(){const bt=B; if(!bt) return;
   const e=bt.enemy,u=cur();
   setText(hud.stage,`Stage ${bt.stage} · ${bt.wave===3?'Boss':'Wave '+bt.wave+'/3'}`);
@@ -440,6 +568,8 @@ export function updateHud(){const bt=B; if(!bt) return;
   if(e&&u){const a=elemMult(u.sp.el,e.sp.el), d=elemMult(e.sp.el,u.sp.el); let txt='',cls='mu';
     if(a>1&&d>1){txt='Both strong ▲▼';cls+=' warn'} else if(a>1){txt='Advantage ▲ your hits ×1.5';cls+=' good'} else if(d>1){txt='Disadvantage ▼ swap?';cls+=' bad'}
     setText(hud.eMu,txt); hud.eMu.className=cls; hud.eMu.hidden=!txt;}
+  renderStatus(hud.eSt,bt.enemy&&!bt.enemy.dead?bt.enemy.st:{});
+  renderStatus(hud.pSt,u&&!u.dead?u.st:{});
 }
 
 /* ---------- input ---------- */

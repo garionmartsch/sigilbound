@@ -5,6 +5,8 @@ import {
   addXp, capOf, elemMult, feedXp, simXp, statsOf, xpNext,
 } from '../src/data';
 import { migrate, newCard, defaultSave } from '../src/save';
+import { GENERATED } from '../src/beasts/generated';
+import { generateCommons } from '../tools/generate-commons';
 import type { Card } from '../src/types';
 
 const card = (sp: string, lvl = 1, evo = 0): Card => ({ id: 1, sp, lvl, xp: 0, evo, skill: 1, locked: false });
@@ -47,7 +49,39 @@ describe('elements', () => {
 describe('beasts', () => {
   const keys = Object.keys(SPECIES);
 
-  it('has 21 beasts', () => assert.equal(keys.length, 21));
+  it('has a roster of about a hundred', () => assert.ok(keys.length >= 90, `${keys.length} beasts`));
+
+  it('gives every beast and every form a unique name', () => {
+    const names = keys.flatMap(k => SPECIES[k].forms);
+    const dupes = names.filter((n, i) => names.indexOf(n) !== i);
+    assert.deepEqual(dupes, []);
+  });
+
+  it('includes legendary and mythic beasts', () => {
+    assert.ok(keys.some(k => SPECIES[k].rarity === 'legendary'));
+    assert.ok(keys.some(k => SPECIES[k].rarity === 'mythic'));
+  });
+
+  it('keeps the original beast keys so old saves still load', () => {
+    for (const k of ['cindermaw', 'ashwing', 'vhal', 'tidecoil', 'nyxhollow', 'seraphel']) assert.ok(SPECIES[k], k);
+  });
+
+  it('gives every beast a description for art prompts', () => {
+    for (const k of keys) assert.ok(SPECIES[k].look, k);
+  });
+
+  it('publishes summon rates that add up to 100%', () => {
+    const rift = Object.values(RARITY).reduce((a, r) => a + r.w, 0);
+    const call = Object.values(RARITY).reduce((a, r) => a + r.call, 0);
+    assert.ok(Math.abs(rift - 100) < 1e-9, `rift ${rift}`);
+    assert.ok(Math.abs(call - 100) < 1e-9, `call ${call}`);
+  });
+
+  it('regenerates the same common beasts every time', () => {
+    const again = generateCommons();
+    assert.deepEqual(Object.keys(again), Object.keys(GENERATED));
+    for (const k of Object.keys(again)) assert.deepEqual(again[k], GENERATED[k], k);
+  });
 
   it('gives every beast a valid element, rarity and three form names', () => {
     for (const k of keys) {

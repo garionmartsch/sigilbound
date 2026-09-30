@@ -1,7 +1,7 @@
 {
   "name": "sigilbound",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Mobile monster-collecting battler: summon, swipe, bind.",
   "type": "module",
   "scripts": {
@@ -9,7 +9,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "gen:commons": "tsx tools/generate-commons.ts",
+    "gen:prompts": "tsx tools/build-prompts.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.0",

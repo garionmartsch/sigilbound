@@ -74,8 +74,8 @@ const P: Record<string, (arg?: any) => void> = {
   win(){[523,659,784,1047].forEach((f,i)=>tone({type:'triangle',f0:f,dur:0.35,vol:0.18,at:i*0.11}))},
   lose(){[392,311,262,196].forEach((f,i)=>tone({type:'triangle',f0:f,dur:0.4,vol:0.16,at:i*0.16}))},
   summon(){noise({dur:1.3,vol:0.22,f0:300,f1:5000,q:4,attack:1.0}); tone({f0:110,f1:440,dur:1.3,vol:0.12,attack:1})},
-  reveal(r: string){const n=r==='epic'?[523,659,784,988,1319]:r==='rare'?[523,659,784,1047]:[523,784]; n.forEach((f,i)=>tone({type:'triangle',f0:f,dur:0.6,vol:0.16,at:i*0.07}));
-    if(r==='epic')for(let i=0;i<8;i++)tone({f0:rand(2000,4000),dur:0.15,vol:0.05,at:0.3+i*0.06})},
+  reveal(r: string){const n=r==='mythic'?[392,523,659,784,988,1175,1568]:r==='legendary'?[440,554,659,880,1109,1319]:r==='epic'?[523,659,784,988,1319]:r==='rare'?[523,659,784,1047]:[523,784]; n.forEach((f,i)=>tone({type:'triangle',f0:f,dur:0.6,vol:0.16,at:i*0.07}));
+    if(r==='epic'||r==='legendary'||r==='mythic')for(let i=0;i<(r==='mythic'?16:r==='legendary'?12:8);i++)tone({f0:rand(2000,4000),dur:0.15,vol:0.05,at:0.3+i*0.06})},
   shards(){for(let i=0;i<5;i++){tone({type:'triangle',f0:rand(1800,2600),f1:900,dur:0.12,vol:0.08,at:0.28+i*0.07}); noise({dur:0.05,vol:0.15,type:'highpass',f0:4000,at:0.5+i*0.07})}},
   thunder(){noise({dur:0.08,vol:0.5,type:'highpass',f0:2500}); noise({dur:0.7,vol:0.45,type:'lowpass',f0:900,f1:80,at:0.03}); tone({f0:60,f1:30,dur:0.5,vol:0.35,at:0.02})},
   rockfall(){noise({dur:0.42,vol:0.25,f0:300,f1:1200,q:1.5,attack:0.2})},

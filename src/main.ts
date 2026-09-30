@@ -4,6 +4,7 @@ import { ELEM, ELEM_ORDER } from './data';
 import { drawMonster } from './render';
 import { current, show } from './screens';
 import { initSound } from './sfx';
+import { EFFECT_TEXT } from './status';
 import { drawAltar, drawForge } from './ui';
 import { $, $$, clock, fit } from './util';
 
@@ -37,9 +38,9 @@ function loop(now: number) {
 }
 
 /* ---------- start ---------- */
-$('#elemT').innerHTML = '<tr><th>Element</th><th>Strong vs</th><th>Weak to</th></tr>' + ELEM_ORDER.map(k => {
+$('#elemT').innerHTML = '<tr><th>Element</th><th>Strong vs</th><th>Weak to</th><th>Effect</th></tr>' + ELEM_ORDER.map(k => {
   const weak = ELEM_ORDER.filter(o => ELEM[o].beats.includes(k));
-  return `<tr><td><span class="chip ${k}">${ELEM[k].name}</span></td><td>${ELEM[k].beats.map(b => ELEM[b].name).join(', ')}</td><td>${weak.map(b => ELEM[b].name).join(', ')}</td></tr>`;
+  return `<tr><td><span class="chip ${k}">${ELEM[k].name}</span></td><td>${ELEM[k].beats.map(b => ELEM[b].name).join(', ')}</td><td>${weak.map(b => ELEM[b].name).join(', ')}</td><td>${EFFECT_TEXT[k]}</td></tr>`;
 }).join('');
 initSound();
 show('home');
