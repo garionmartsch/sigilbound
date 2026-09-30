@@ -6,9 +6,9 @@ Usage:
 Example:
     python tools/cutout.py ashwing ~/Downloads/ashwing1.png ~/Downloads/ashwing2.png ~/Downloads/ashwing3.png
 
-Writes art/<beast_key>_0.webp, _1.webp and _2.webp. Afterwards, add the beast
-to ART_FILES near the top of the script in index.html, for example:
-    const ART_FILES={cindermaw:[0,1,2], ashwing:[0,1,2]};
+Writes public/art/<beast_key>_0.webp, _1.webp and _2.webp. Afterwards, add
+the beast to ART_FILES in src/render.ts, for example:
+    export const ART_FILES: Record<string, number[]> = { cindermaw: [0, 1, 2], ashwing: [0, 1, 2] };
 
 How it works: the background colour is sampled from the image border. Pixels
 close to that colour AND connected to the image edge are made transparent,
@@ -58,13 +58,13 @@ def main() -> None:
         print(__doc__)
         sys.exit(1)
     key, images = sys.argv[1], sys.argv[2:5]
-    art_dir = Path(__file__).resolve().parent.parent / "art"
+    art_dir = Path(__file__).resolve().parent.parent / "public" / "art"
     for form, path in enumerate(images):
         out = art_dir / f"{key}_{form}.webp"
         w, h = cutout(Path(path).expanduser(), out)
-        print(f"{out.relative_to(art_dir.parent)}  {w}x{h}")
+        print(f"{out.relative_to(art_dir.parent.parent)}  {w}x{h}")
     forms = ",".join(str(i) for i in range(len(images)))
-    print(f"\nNow add  {key}:[{forms}]  to ART_FILES in index.html.")
+    print(f"\nNow add  {key}: [{forms}]  to ART_FILES in src/render.ts.")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,80 @@
+export type ElementKey =
+  | 'pyre' | 'tide' | 'thorn' | 'frost' | 'storm' | 'stone' | 'gale' | 'radiant' | 'umbral';
+
+export type RarityKey = 'common' | 'rare' | 'epic';
+
+export type BodyType = 'brute' | 'wisp' | 'serpent' | 'avian' | 'golem';
+
+export interface ElementInfo {
+  name: string;
+  color: string;
+  /** Elements this one deals 1.5x damage to. */
+  beats: ElementKey[];
+}
+
+export interface RarityInfo {
+  /** Rift Summon weight, in percent. */
+  w: number;
+  /** Beast Call weight, in percent. */
+  call: number;
+  label: string;
+  color: string;
+  stars: number;
+  /** Level cap of the base form; each evolution adds 10. */
+  cap: number;
+  /** XP given when a level 1 card of this rarity is fed. */
+  feed: number;
+  /** Gold for selling a level 1 card. */
+  sell: number;
+  /** Gold cost of the first evolution; the second costs double. */
+  evo: number;
+}
+
+export interface Species {
+  name: string;
+  el: ElementKey;
+  rarity: RarityKey;
+  body: BodyType;
+  /** Main body color, highlight color and eye glow color. */
+  c1: string;
+  c2: string;
+  eye: string;
+  hp: number;
+  atk: number;
+  /** Attack tempo multiplier; above 1 attacks more often. */
+  spd: number;
+  special: string;
+  // Optional features for the code-drawn bodies.
+  horns?: number;
+  eyes?: number;
+  spikes?: boolean;
+  fins?: boolean;
+  crown?: boolean;
+  /** Evolution stage, set only while drawing. */
+  evo?: number;
+}
+
+export interface Card {
+  id: number;
+  /** Species key, e.g. "cindermaw". */
+  sp: string;
+  lvl: number;
+  xp: number;
+  /** 0 base form, 1 evolved, 2 final form. */
+  evo: number;
+  /** Skill level 1 to 5; each level adds 12% special damage. */
+  skill: number;
+  locked: boolean;
+}
+
+export interface SaveData {
+  roster: Card[];
+  /** Card ids, up to three. */
+  team: number[];
+  shards: number;
+  gold: number;
+  stage: number;
+  nextId: number;
+}
+
+export type Screen = 'home' | 'battle' | 'altar' | 'roster' | 'forge';
