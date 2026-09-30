@@ -1,4 +1,5 @@
-import { BOX, CALL_COST, COST, ELEM, ELEM_ORDER, EVO_LABEL, FORMS, MAX_EVO, MAX_SKILL, RARITY, RARITY_ORDER, SPECIES, addXp, capOf, evoCost, feedXp, fuseCost, nameOf, rarOf, sellOf, simXp, statsOf, xpNext } from './data';
+import { emit, hooks } from './events';
+import { BOX, CALL_COST, COST, ELEM, ELEM_ORDER, EVO_LABEL, FORMS, MAX_EVO, MAX_SKILL, RARITY, RARITY_ORDER, SPECIES, pickRarity, addXp, capOf, evoCost, feedXp, fuseCost, nameOf, rarOf, sellOf, simXp, statsOf, xpNext } from './data';
 import { drawMonster, drawSigil } from './render';
 import { cardById, fodderFor, newCard, partnersFor, persist, save } from './save';
 import type { Card, RarityKey } from './types';
@@ -45,12 +46,7 @@ export function renderAltar(){
 }
 /** Pick a beast for a summon: first a rarity by its published rate, then a beast of that rarity. */
 export function roll(kind: 'rift'|'call'): string{
-  let r=Math.random()*100, rar: RarityKey='common';
-  for(const k of [...RARITY_ORDER].reverse()){
-    const w=kind==='rift'?RARITY[k].w:RARITY[k].call;
-    if(r<w){rar=k;break}
-    r-=w;
-  }
+  const rar=pickRarity(kind,Math.random()*100,kind==='rift'?hooks.summonRarity:null);
   return pick(Object.keys(SPECIES).filter(k=>SPECIES[k].rarity===rar));
 }
 export function summon(kind: 'rift'|'call'){
@@ -81,7 +77,7 @@ export function drawAltar(dt){
     if(an.t>=1.4&&!an.done){an.done=true; A.flash=1; A.shown={key:an.key,t:0,rar:an.rar}; SFX.play('reveal',an.rar); buzz(an.rar==='mythic'?[60,40,60,40,60,40,200]:an.rar==='legendary'?[50,50,50,50,160]:an.rar==='epic'?[40,60,40,60,140]:an.rar==='rare'?[40,50,80]:40);
       const sp=SPECIES[an.key];
       $('#reveal').innerHTML=`<span><span class="chip ${an.rar}">${RARITY[an.rar].label}</span> <span class="chip ${sp.el}">${ELEM[sp.el].name}</span></span><b>${sp.name}</b><span>${an.msg}</span>`;}
-    if(an.t>2.0){A.anim=null; renderAltar();}
+    if(an.t>2.0){A.anim=null; renderAltar(); emit('summoned',{key:an.key,rar:an.rar});}
   }
   if(A.shown){A.shown.t+=dt; col=RARITY[A.shown.rar].color; glow=Math.max(glow,0.45)}
   A.rot+=dt*spin; A.flash=Math.max(0,A.flash-dt*2);
@@ -300,7 +296,7 @@ export function drawForge(dt){
         const q=clamp((k-0.6)/0.4,0,1); scale=0.5+0.5*ease(q*1.4); glow=rgba('#E7BE6E',0.95);
       }
     }
-    if(a.t>=a.dur){F.anim=null; renderForge()}
+    if(a.t>=a.dur){F.anim=null; renderForge(); emit(a.type==='enhance'?'fused':'evolved')}
   }
   if(drawBase) drawMonster(c,m.sp,cx,cy,s,clock.t,{dir:1,evo,scale,glow});
   F.parts.forEach(p=>{p.life-=dt; const k=1-p.life/p.max; c.globalAlpha=clamp(p.life/p.max,0,1); c.fillStyle=p.color; ell(c,p.x+(p.tx-p.x)*k,p.y+(p.ty-p.y)*k,2.2,2.2); c.fill()});

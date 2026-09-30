@@ -6,7 +6,7 @@ import { clamp } from './util';
 export const KEY='sigilbound-save-v2', OLDKEY='sigilbound-save-v1';
 export function newCard(s: SaveData,sp: string,lvl?: number): Card{const c: Card={id:s.nextId++,sp,lvl:lvl||1,xp:0,evo:0,skill:1,locked:false};s.roster.push(c);return c}
 export function defaultSave(): SaveData{
-  const s: SaveData={roster:[],team:[],shards:300,gold:1500,stage:1,nextId:1};
+  const s: SaveData={roster:[],team:[],shards:300,gold:1500,stage:1,nextId:1,tutorial:{done:false,step:'intro'}};
   ['cindermaw','tidecoil','brambleback'].forEach(k=>s.team.push(newCard(s,k).id));
   ['cindermaw','tidecoil','brambleback','cindermaw'].forEach(k=>newCard(s,k));
   return s;
@@ -22,6 +22,8 @@ export function migrate(s: any): SaveData{
   s.nextId=Math.max(s.nextId||1,...s.roster.map((m: Card)=>m.id+1));
   s.team=s.team.filter((id: number)=>s.roster.some((m: Card)=>m.id===id)).slice(0,3);
   if(!s.team.length) s.team=[s.roster[0].id];
+  // Saves from before the tutorial existed belong to players who already know the game.
+  if(!s.tutorial||typeof s.tutorial.done!=='boolean') s.tutorial={done:true,step:'done'};
   return s;
 }
 export function load(): SaveData{

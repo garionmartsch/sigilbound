@@ -54,3 +54,18 @@ export const fuseCost=(m: Card,n: number)=>n*(20*m.lvl+30);
 export function addXp(m: Card,xp: number){const cap=capOf(m),from=m.lvl; m.xp=(m.xp||0)+xp; while(m.lvl<cap&&m.xp>=xpNext(m.lvl)){m.xp-=xpNext(m.lvl);m.lvl++} if(m.lvl>=cap){m.lvl=cap;m.xp=0} return m.lvl-from}
 /** Preview of addXp without changing the card. */
 export function simXp(m: Card,xp: number){const c=Object.assign({},m); addXp(c,xp); return c}
+
+/**
+ * Choose a summon's rarity from the published rates.
+ * @param r a roll from 0 up to 100
+ * @param force skip the roll and use this rarity (the tutorial's guaranteed Rare)
+ */
+export function pickRarity(kind: 'rift' | 'call', r: number, force?: RarityKey | null): RarityKey {
+  if (force) return force;
+  for (const k of [...RARITY_ORDER].reverse()) {
+    const w = kind === 'rift' ? RARITY[k].w : RARITY[k].call;
+    if (r < w) return k;
+    r -= w;
+  }
+  return 'common';
+}

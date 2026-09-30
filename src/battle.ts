@@ -6,7 +6,8 @@ import { SFX, buzz } from './sfx';
 import { FXDRAW, fbPos, ribbon, tornadoX, waveX, type Fx } from './fx';
 import { applyStatus, cleanse, damageDealtMult, damageTakenMult, drainFrom, rollDazeMiss, STATUS, STATUS_INFO, statusList, tempo, tickStatus, type StatusState } from './status';
 import type { Card, ElementKey, RarityKey, Species } from './types';
-import { $, $$, RM, clamp, ell, fit, pick, rand, rgba } from './util';
+import { $, $$, RM, clamp, ease, ell, fit, pick, rand, rgba } from './util';
+import { emit } from './events';
 
 /* ---------- battle state ---------- */
 /** One of the player's three beasts during a fight. */
@@ -71,7 +72,29 @@ export interface Battle {
   timers: { t: number; fn: () => void }[];
   embers: { x: number; y: number; v: number; r: number; ph: number }[];
   lastKind?: ActKind;
+  /** Present only in the tutorial's training fight. */
+  training?: TrainingRules;
 }
+
+/** Gesture the tutorial is demonstrating with a ghost finger. */
+export type Demo = 'tap' | 'slash' | 'up' | 'down';
+/** Rules the tutorial switches per lesson during the training fight. */
+export interface TrainingRules {
+  /** The enemy winds up and attacks. */
+  enemyActs: boolean;
+  /** The enemy can't drop below 1 HP, so lessons can't end early. */
+  protectEnemy: boolean;
+  demo: Demo | null;
+}
+
+/** Loaner team for the training fight, so every new player learns with the same beasts. */
+const TRAINING_TEAM: Card[] = [
+  { id: -1, sp: 'cindermaw', lvl: 6, xp: 0, evo: 0, skill: 1, locked: true },
+  { id: -2, sp: 'tidecoil', lvl: 6, xp: 0, evo: 0, skill: 1, locked: true },
+  { id: -3, sp: 'shardling', lvl: 6, xp: 0, evo: 0, skill: 1, locked: true },
+];
+/** Rewards for finishing training. */
+export const TRAINING_REWARD = { shards: 150, gold: 300 };
 
 /** The fight in progress, or null outside battle. */
 export let B: Battle | null = null;
@@ -97,23 +120,32 @@ export function makeEnemy(stage: number,wave: number): Enemy{
   return {key,sp,evo,name:FORMS[key][evo],lvl,boss,hp:maxHp,maxHp,atk:sp.atk*k*(boss?1.1:0.8),state:'idle' as const,st:{},dotAcc:0,dotT:0,timer:rand(1.5,2.1),windup:boss?0.95:0.85,
     flash:0,lunge:0,dead:false,fade:1,spawn:0};
 }
-export function startBattle(){
-  const team=teamMembers().map(m=>{const st=statsOf(m);return {m,sp:SPECIES[m.sp],name:nameOf(m),evo:m.evo||0,skill:m.skill||1,hp:st.maxHp,maxHp:st.maxHp,atk:st.atk,energy:0,dead:false,fade:1,flash:0,st:{},dotAcc:0,dotT:0}});
+/** A Thorn beast: Cindermaw (Pyre) is strong against it and Tidecoil (Tide) is weak, for the matchup lesson. */
+function makeTrainingEnemy(): Enemy{
+  // Enough HP that the lessons leave it standing; it can't be finished before the last lesson anyway.
+  const key='thistlekit', sp=SPECIES[key], maxHp=Math.round(sp.hp*3.6);
+  return {key,sp,evo:0,name:sp.name,lvl:3,boss:false,hp:maxHp,maxHp,atk:5,state:'idle',st:{},dotAcc:0,dotT:0,timer:2,windup:1.6,
+    flash:0,lunge:0,dead:false,fade:1,spawn:0};
+}
+export function startBattle(opts: {training?: boolean}={}){
+  const cards=opts.training?TRAINING_TEAM:teamMembers();
+  const team=cards.map(m=>{const st=statsOf(m);return {m,sp:SPECIES[m.sp],name:nameOf(m),evo:m.evo||0,skill:m.skill||1,hp:st.maxHp,maxHp:st.maxHp,atk:st.atk,energy:0,dead:false,fade:1,flash:0,st:{},dotAcc:0,dotT:0}});
   if(!team.length) return;
-  const b: Battle={team,active:0,stage:save.stage,wave:0,enemy:null,cd:0,swapCd:0,parry:0,parryCd:0,buffered:null,fx:[],hitstop:0,flash:0,flashCol:'#FFFFFF',lunge:0,pSpawn:1,
+  const b: Battle={team,active:0,stage:opts.training?0:save.stage,training:opts.training?{enemyActs:false,protectEnemy:true,demo:null}:undefined,wave:0,enemy:null,cd:0,swapCd:0,parry:0,parryCd:0,buffered:null,fx:[],hitstop:0,flash:0,flashCol:'#FFFFFF',lunge:0,pSpawn:1,
     parts:[],texts:[],trail:[],shake:0,time:0,over:false,earned:0,gold:0,drops:[],timers:[],
     embers:Array.from({length:26},()=>({x:Math.random(),y:Math.random(),v:rand(0.02,0.06),r:rand(0.8,2.2),ph:Math.random()*6}))};
   B=b;
   $('#result').hidden=true;
   $('#slots').innerHTML=b.team.map((u,i)=>`<button class="slot" data-i="${i}" aria-label="Swap to ${u.name}"><canvas class="pcan" data-sp="${u.m.sp}" data-evo="${u.evo}" data-seed="${i*1.3}"></canvas><span class="sname">${u.name}</span><span class="bar sm"><i></i></span><span class="sbadge"></span></button>`).join('');
   $$('#slots .slot').forEach(b=>b.addEventListener('click',()=>swapTo(Number(b.dataset.i))));
-  retreatArm=0; $('#btnRetreat').textContent='Retreat';
+  retreatArm=0; retreatBtn.textContent=opts.training?'Skip tutorial':'Retreat';
   show('battle');
   nextWave();
 }
 export function nextWave(){const bt=B; if(!bt) return;
-  bt.wave++; const e=makeEnemy(bt.stage,bt.wave); bt.enemy=e;
-  banner(bt.wave===3?'Boss':`Wave ${bt.wave}`, bt.wave===3?e.name:`Stage ${bt.stage}`);
+  bt.wave++; const e=bt.training?makeTrainingEnemy():makeEnemy(bt.stage,bt.wave); bt.enemy=e;
+  if(bt.training) banner('Training','Learn to fight');
+  else banner(bt.wave===3?'Boss':`Wave ${bt.wave}`, bt.wave===3?e.name:`Stage ${bt.stage}`);
 }
 export function banner(txt: string,sub?: string){SFX.play('banner');const b=$('#banner'); b.innerHTML=`${txt}<small>${sub||''}</small>`; b.classList.remove('go'); void b.offsetWidth; b.classList.add('go');}
 
@@ -169,6 +201,7 @@ export function playerAct(kind: ActKind,ang?: number){const bt=B; if(!bt) return
   }
   hitEnemy(dmg,em,kind);
   if(kind==='slash'&&Math.random()<STATUS.hitChance.player) inflictOnEnemy(u,false);
+  emit(kind);
 }
 
 /* ---------- status effects in battle ---------- */
@@ -211,12 +244,14 @@ function damageEnemy(amount: number, color: string){const bt=B; if(!bt) return;
   const e=bt.enemy; if(!e||e.dead) return;
   const g=geo(), n=Math.max(1,Math.round(amount));
   e.hp-=n; ftext(g.E.x+rand(-g.s*0.5,g.s*0.5),g.E.y-g.s*0.2,String(n),color,17,0.8);
+  if(bt.training?.protectEnemy) e.hp=Math.max(1,e.hp);
   if(e.hp<=0) enemyDefeated();
 }
 function damageUnit(u: Unit, amount: number, color: string){const bt=B; if(!bt) return;
   if(u.dead) return;
   const g=geo(), n=Math.max(1,Math.round(amount));
   u.hp-=n;
+  if(bt.training) u.hp=Math.max(1,u.hp);
   if(u===cur()) ftext(g.P.x+rand(-g.s*0.5,g.s*0.5),g.P.y-g.s*0.2,String(n),color,17,0.8);
   if(u.hp<=0) unitDown(u);
 }
@@ -225,7 +260,7 @@ export function castSpecial(u: Unit,e: Enemy,dmg: number,em: number){const bt=B;
   ftext(g.w/2,g.h*0.52,u.sp.special,col,28,1.4);
   if(e.state==='windup'){e.state='idle';e.timer=rand(1.6,2.2);ftext(g.E.x,g.E.y-s*1.6,'Staggered!','#F0E8F5',20,1)}
   fx({type:'charge',x:g.P.x,y:g.P.y,r:s*1.8,color:col,dur:0.28}); SFX.play('charge'); buzz(20);
-  const land=()=>{ if(!bt||bt.enemy!==e||e.dead) return; bt.flash=0.55; bt.flashCol=col; bt.hitstop=0.14; shake(1); SFX.play('hit'); buzz(70); hitEnemy(dmg,em,'special'); inflictOnEnemy(u,true); };
+  const land=()=>{ if(!bt||bt.enemy!==e||e.dead) return; bt.flash=0.55; bt.flashCol=col; bt.hitstop=0.14; shake(1); SFX.play('hit'); buzz(70); hitEnemy(dmg,em,'special'); inflictOnEnemy(u,true); emit('special'); };
   if(el==='pyre'){
     bt.timers.push({t:0.28,fn:()=>{ bt.lunge=1; SFX.play('fireball');
       fx({type:'fireball',x0:g.P.x+s*0.5,y0:g.P.y-s*0.4,x1:g.E.x,y1:g.E.y,r:s*0.4,dur:0.42,end:()=>{
@@ -274,6 +309,7 @@ export function hitEnemy(dmg: number,em: number,kind: ActKind){const bt=B; if(!b
   shake(kind==='tap'?0.15:0.4);
   const drain=drainFrom(e.st);
   if(drain&&u&&!u.dead){const h=Math.round(dmg*drain); u.hp=Math.min(u.maxHp,u.hp+h); ftext(g.P.x,g.P.y-g.s*1.2,`+${h}`,'#B58BF0',16,0.8)}
+  if(bt.training?.protectEnemy) e.hp=Math.max(1,e.hp);
   if(e.hp<=0) enemyDefeated();
 }
 /** The enemy's health reached zero: rewards, drops, and the next wave. */
@@ -284,6 +320,7 @@ function enemyDefeated(){const bt=B; if(!bt) return;
     fx({type:'explosion',x:g.E.x,y:g.E.y,r:g.s*2.6,color:ELEM[e.sp.el].color,dur:0.8});
     elemBurst(g.E.x,g.E.y,e.sp.el,70,420,0.4); shake(0.9); SFX.play('kill'); buzz([30,40,90]);
     bt.hitstop=Math.max(bt.hitstop,0.18); bt.flash=Math.max(bt.flash,0.4); bt.flashCol='#FFF4DC';
+    if(bt.training){bt.timers.push({t:1.3,fn:trainingComplete}); return}
     const reward=e.boss?60+10*bt.stage:20+5*bt.stage; bt.earned+=reward;
     const gold=e.boss?120+30*bt.stage:40+10*bt.stage; bt.gold+=gold;
     ftext(g.E.x,g.E.y,`+${reward} shards · +${gold} gold`,'#E7BE6E',18,1.4);
@@ -306,12 +343,15 @@ export function enemyStrike(){const bt=B; if(!bt) return;
     u.energy=Math.min(100,u.energy+22);
     const cdmg=Math.max(1,Math.round(u.atk*0.8*elemMult(u.sp.el,e.sp.el)));
     bt.timers.push({t:0.12,fn:()=>{const e2=bt.enemy,u2=cur(); if(e2&&!e2.dead&&u2&&!u2.dead){bt.lunge=1; slashFx(g.E.x,g.E.y-g.s*0.1,rand(-0.6,0.6),ELEM[u2.sp.el].color,u2.sp.body,g.s); hitEnemy(cdmg,1,'slash')}}});
+    emit('parry');
     return;
   }
   if(rollDazeMiss(e.st)){ftext(g.P.x,g.P.y-g.s*1.2,'Miss!','#9FDCC0',22,0.9); SFX.play('guard'); return}
   u.energy=Math.min(100,u.energy+6);
   const dmg=Math.max(1,Math.round(e.atk*em*rand(0.9,1.1)*damageDealtMult(e.st)*damageTakenMult(u.st)));
   u.hp-=dmg; u.flash=1; u.kb=1; shake(0.6); bt.hitstop=0.05; SFX.play('hurt'); buzz(45);
+  if(bt.training) u.hp=Math.max(1,u.hp);
+  emit('hurt');
   const drain=drainFrom(u.st);
   if(drain){e.hp=Math.min(e.maxHp,e.hp+Math.round(dmg*drain))}
   const toP=Math.atan2(g.P.y-g.E.y,g.P.x-g.E.x);
@@ -339,6 +379,7 @@ export function swapTo(i: number){const bt=B; if(!bt) return;
   if(!bt||bt.over||bt.swapCd>0||i===bt.active||!bt.team[i]||bt.team[i].dead) return;
   SFX.play('ui'); buzz(10);
   bt.active=i; bt.swapCd=1.2; bt.pSpawn=0; bt.parry=0; bt.cd=0; bt.buffered=null;
+  emit('swap',i);
 }
 export const PARRY=0.4;
 export function parry(){const bt=B; if(!bt) return;
@@ -359,8 +400,19 @@ export function victory(){const bt=B; if(!bt) return;
     ${save.shards>=COST?'<p style="margin:0;color:var(--gold)">You have enough shards to summon.</p>':''}
     <div class="btns"><button id="rHome">Home</button><button class="primary" id="rNext">Stage ${save.stage}</button></div>`;
   $('#result').hidden=false;
-  $('#rHome').onclick=()=>{B=null;show('home')}; $('#rNext').onclick=startBattle;
+  $('#rHome').onclick=()=>endBattle(); $('#rNext').onclick=()=>startBattle();
 }
+/** The training fight is won: fixed rewards, then on to the rest of the tutorial. */
+function trainingComplete(){const bt=B; if(!bt) return;
+  bt.over=true; SFX.play('win'); buzz([20,40,20,40,60]);
+  save.shards+=TRAINING_REWARD.shards; save.gold+=TRAINING_REWARD.gold; persist();
+  $('#resultBox').innerHTML=`<h2>Training complete</h2><ul><li><b>+${TRAINING_REWARD.shards}</b> soul shards · <b>+${TRAINING_REWARD.gold}</b> gold</li><li>Next: summon your first beast.</li></ul>
+    <div class="btns" style="grid-template-columns:1fr"><button class="primary" id="rNext">Continue</button></div>`;
+  $('#result').hidden=false;
+  $('#rNext').onclick=()=>{endBattle(); emit('trainingDone')};
+}
+/** Leave the battle screen for home. */
+export function endBattle(){B=null; show('home')}
 export function defeat(){const bt=B; if(!bt) return;
   bt.over=true; SFX.play('lose'); buzz(200);
   const kept=Math.floor(bt.earned/2), keptG=Math.floor(bt.gold/2); save.shards+=kept; save.gold+=keptG;
@@ -368,14 +420,15 @@ export function defeat(){const bt=B; if(!bt) return;
   $('#resultBox').innerHTML=`<h2 class="lose">Your team fell</h2><ul><li>Kept <b>${kept}</b> soul shards and <b>${keptG}</b> gold${bt.drops.length?` plus ${bt.drops.length} card drop${bt.drops.length>1?'s':''}`:''}</li><li>Tip: swipe down when the closing ring turns gold to parry and counter.</li></ul>
     <div class="btns"><button id="rHome">Home</button><button class="primary" id="rNext">Retry</button></div>`;
   $('#result').hidden=false;
-  $('#rHome').onclick=()=>{B=null;show('home')}; $('#rNext').onclick=startBattle;
+  $('#rHome').onclick=()=>endBattle(); $('#rNext').onclick=()=>startBattle();
 }
 let retreatArm=0;
 const retreatBtn=$('#btnRetreat');
 retreatBtn.addEventListener('click',()=>{
-  if(Date.now()-retreatArm<2500){B=null;show('home');return}
-  retreatArm=Date.now(); retreatBtn.textContent='Tap again to retreat';
-  setTimeout(()=>{if(Date.now()-retreatArm>=2400)retreatBtn.textContent='Retreat'},2500);
+  const training=!!B?.training;
+  if(Date.now()-retreatArm<2500){endBattle(); if(training) emit('skipTutorial'); return}
+  retreatArm=Date.now(); retreatBtn.textContent=training?'Tap again to skip':'Tap again to retreat';
+  setTimeout(()=>{if(Date.now()-retreatArm>=2400)retreatBtn.textContent=training?'Skip tutorial':'Retreat'},2500);
 });
 
 /** Gravity per particle kind (negative rises). */
@@ -422,7 +475,7 @@ export function updateBattle(dt){const bt=B; if(!bt) return;
     if(e.dead) e.fade=Math.max(0,e.fade-dt*1.4);
     else {
       e.spawn=Math.min(1,e.spawn+dt/0.6);
-      if(e.spawn>=1&&!bt.over&&!cur()?.dead){
+      if(e.spawn>=1&&!bt.over&&!cur()?.dead&&(!bt.training||bt.training.enemyActs)){
         e.timer-=dt*tempo(e.st);
         if(e.state==='idle'&&e.timer<=0){e.state='windup';e.timer=e.windup;e.ticked=false;SFX.play('warn')}
         else if(e.state==='windup'&&!e.ticked&&e.timer<=PARRY){e.ticked=true;SFX.play('window')}
@@ -447,6 +500,40 @@ export function updateBattle(dt){const bt=B; if(!bt) return;
   bt.trail=bt.trail.filter(p=>bt.time-p.t<0.22);
 }
 
+
+/**
+ * A ghost finger that loops the gesture the tutorial is teaching:
+ * a pulsing tap, a sideways slash, a swipe up, or a swipe down beside your beast.
+ */
+function drawDemo(c: CanvasRenderingContext2D, g: ReturnType<typeof geo>, demo: Demo, t: number){
+  const period=1.6, p=(t%period)/period, s=g.s;
+  const cx=g.w*0.5, cy=g.h*0.5;
+  let x0=cx, y0=cy, x1=cx, y1=cy;
+  if(demo==='slash'){x0=cx-s*1.3; y0=cy+s*0.15; x1=cx+s*1.3; y1=cy-s*0.2}
+  else if(demo==='up'){x0=cx+s*0.4; y0=cy+s*1.1; x1=cx+s*0.4; y1=cy-s*1.1}
+  else if(demo==='down'){x0=g.P.x+s*1.7; y0=g.P.y-s*1.5; x1=g.P.x+s*1.7; y1=g.P.y+s*0.1}
+  const move=demo!=='tap';
+  // 0-0.15 fade in, 0.15-0.6 act, 0.6-1 fade out
+  const act=clamp((p-0.15)/0.45,0,1), k=ease(act);
+  const x=move?x0+(x1-x0)*k:x0, y=move?y0+(y1-y0)*k:y0;
+  const alpha=p<0.15?p/0.15:(p>0.75?clamp((1-p)/0.25,0,1):1);
+  c.save(); c.globalAlpha=alpha*0.9;
+  if(move&&act>0){
+    const tx=x0+(x1-x0)*Math.max(0,k-0.35), ty=y0+(y1-y0)*Math.max(0,k-0.35);
+    const gr=c.createLinearGradient(tx,ty,x,y); gr.addColorStop(0,'rgba(231,190,110,0)'); gr.addColorStop(1,'rgba(255,236,190,0.85)');
+    c.strokeStyle=gr; c.lineWidth=s*0.16; c.lineCap='round';
+    c.beginPath(); c.moveTo(tx,ty); c.lineTo(x,y); c.stroke();
+  }
+  if(!move&&act>0&&act<1){
+    c.strokeStyle=`rgba(255,236,190,${1-act})`; c.lineWidth=3;
+    ell(c,x,y,s*(0.25+act*0.9),s*(0.25+act*0.9)); c.stroke();
+  }
+  const press=!move&&act>0&&act<0.3?0.8:1;
+  c.fillStyle='rgba(231,190,110,0.28)'; ell(c,x,y,s*0.34*press,s*0.34*press); c.fill();
+  c.fillStyle='rgba(255,246,225,0.92)'; c.shadowColor='#E7BE6E'; c.shadowBlur=14;
+  ell(c,x,y,s*0.16*press,s*0.16*press); c.fill();
+  c.restore();
+}
 
 /** A block of ice over a frozen beast. */
 function drawIce(c: CanvasRenderingContext2D, x: number, y: number, s: number, t: number){
@@ -519,6 +606,7 @@ export function drawBattle(){const bt=B; if(!bt) return;
     ell(c,g.P.x,g.P.y,s*(2.5-1.45*pr),s*(2.5-1.45*pr)); c.stroke();
   }
   bt.fx.forEach(fo=>{const d=FXDRAW[fo.type]; if(d) d(c,fo)});
+  if(bt.training?.demo&&!bt.over) drawDemo(c,g,bt.training.demo,bt.time);
   if(bt.trail.length>1){
     const col=u?ELEM[u.sp.el].color:'#FFFFFF', n=bt.trail.length;
     const pts=bt.trail.map(p=>({x:p.x,y:p.y}));
@@ -556,7 +644,7 @@ function renderStatus(el: HTMLElement, st: StatusState){
 }
 export function updateHud(){const bt=B; if(!bt) return;
   const e=bt.enemy,u=cur();
-  setText(hud.stage,`Stage ${bt.stage} · ${bt.wave===3?'Boss':'Wave '+bt.wave+'/3'}`);
+  setText(hud.stage,bt.training?'Training':`Stage ${bt.stage} · ${bt.wave===3?'Boss':'Wave '+bt.wave+'/3'}`);
   if(e){setText(hud.eName,e.name); setText(hud.eLvl,'Lv '+e.lvl); setText(hud.eEl,ELEM[e.sp.el].name); hud.eEl.className='chip '+e.sp.el; hud.eBoss.hidden=!e.boss;
     hud.eHp.style.width=(100*e.hp/e.maxHp)+'%'; setText(hud.eHpT,`${Math.ceil(e.hp)} / ${e.maxHp}`);}
   if(u){setText(hud.pName,u.name); setText(hud.pLvl,'Lv '+u.m.lvl); setText(hud.pEl,ELEM[u.sp.el].name); hud.pEl.className='chip '+u.sp.el;

@@ -41,6 +41,7 @@
       <div class="keys">Keyboard: <kbd>J</kbd> strike · <kbd>K</kbd> slash · <kbd>I</kbd> special · <kbd>Space</kbd> parry · <kbd>1</kbd>–<kbd>3</kbd> swap</div>
     </div>
     <div class="navrow settings"><button id="btnSound">Sound: On</button><button id="btnHaptic">Vibration: On</button></div>
+    <button class="ghost" id="btnTutorial">Replay tutorial</button>
     <button class="ghost" id="btnReset">Reset progress</button>
   </section>
 
@@ -52,6 +53,7 @@
       <span class="mu" id="eMu" hidden></span>
       <div class="sts" id="eSt" aria-label="Enemy status effects"></div>
     </div>
+    <div class="tcoach" id="tcoach" hidden aria-live="polite"></div>
     <div id="field"><canvas id="fieldCan"></canvas><div id="banner"></div></div>
     <div class="panel" id="pPanel">
       <div class="pline"><b id="pName">—</b><span class="lv" id="pLvl"></span><span class="chip" id="pEl"></span><span class="num" id="pHpT"></span></div>
@@ -97,6 +99,9 @@
     <div class="fbtns"><button id="fAuto">Auto-pick</button><button class="primary" id="fGo">Fuse</button></div>
   </section>
 </div>
+<div class="tdim" id="tdim" hidden></div>
+<div class="tspot" id="tspot" hidden></div>
+<div class="tbubble" id="tbubble" role="dialog" aria-live="polite" hidden></div>
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

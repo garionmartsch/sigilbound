@@ -1,4 +1,5 @@
 import { startBattle } from './battle';
+import { emit } from './events';
 import { resetSave, save, teamMembers } from './save';
 import type { Screen } from './types';
 import { cardHTML, openSheet, renderAltar, renderForge, renderRoster } from './ui';
@@ -16,6 +17,7 @@ export function show(n: Screen) {
   if (n === 'roster') renderRoster();
   if (n === 'forge') renderForge();
   if (n !== 'roster') $('#sheet').hidden = true;
+  emit('screen', n);
 }
 $$('[data-go]').forEach(b => b.addEventListener('click', () => show(b.dataset.go as Screen)));
 
@@ -28,7 +30,7 @@ export function renderHome() {
   $('#hTeam').innerHTML = teamMembers().map(m => cardHTML(m)).join('');
   $$('#hTeam .card').forEach(b => b.addEventListener('click', () => { show('roster'); openSheet(Number(b.dataset.id)); }));
 }
-$('#btnFight').addEventListener('click', startBattle);
+$('#btnFight').addEventListener('click', () => { emit('fight'); startBattle(); });
 $('#btnAltar').addEventListener('click', () => show('altar'));
 $('#btnRoster').addEventListener('click', () => show('roster'));
 

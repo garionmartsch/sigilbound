@@ -4,6 +4,7 @@ import { ELEM, ELEM_ORDER } from './data';
 import { drawMonster } from './render';
 import { current, show } from './screens';
 import { initSound } from './sfx';
+import { initTutorial, tutorialFrame } from './tutorial';
 import { EFFECT_TEXT } from './status';
 import { drawAltar, drawForge } from './ui';
 import { $, $$, clock, fit } from './util';
@@ -34,6 +35,7 @@ function loop(now: number) {
   if (current === 'altar') drawAltar(dt);
   if (current === 'forge') drawForge(dt);
   drawPortraits();
+  tutorialFrame();
   requestAnimationFrame(loop);
 }
 
@@ -44,4 +46,5 @@ $('#elemT').innerHTML = '<tr><th>Element</th><th>Strong vs</th><th>Weak to</th><
 }).join('');
 initSound();
 show('home');
+initTutorial();
 requestAnimationFrame(loop);

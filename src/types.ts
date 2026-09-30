@@ -91,6 +91,14 @@ export interface SaveData {
   gold: number;
   stage: number;
   nextId: number;
+  /** First-time tutorial progress. */
+  tutorial: TutorialState;
+}
+
+export interface TutorialState {
+  done: boolean;
+  /** Id of the current step, see src/tutorialFlow.ts. */
+  step: string;
 }
 
 export type Screen = 'home' | 'battle' | 'altar' | 'roster' | 'forge';
