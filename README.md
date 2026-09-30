@@ -78,6 +78,7 @@ src/
   settings.ts       The settings menu (gear on home, Pause in battle)
   settingsCore.ts   Settings, defaults, what each one does, save codes (no page access, tested)
   prefs.ts          This device's live settings, loaded at start
+  themes.ts         Color themes for the menus and the battle arena (tested for readable contrast)
   util.ts           Small shared helpers: DOM lookup, math, colors
   styles.css        All styling
 public/art/         Beast art as <beast>_<form>.webp (0 base, 1 evolved, 2 final)
@@ -126,6 +127,8 @@ The settings menu (gear on the home screen) can **copy a save code** to move pro
 ## Settings
 
 Settings belong to the device, not the save, so resetting progress keeps them. They're stored under `sigilbound-settings`: sound on/off and volume, vibration strength, swipe distance, relaxed parry timing (0.55 s window instead of 0.4 s), damage numbers, the controls reminder, screen shake and flashes. Devices set to reduce motion start with shake off and flashes dimmed. To add a setting, add it to `Settings`, `defaultSettings` and `normalizeSettings` in `src/settingsCore.ts`, give it a row in `render` in `src/settings.ts`, and read it through `prefs` where it matters.
+
+**Themes.** The menu offers seven color themes: Sigil Night (the original), Abyssal Tide, Verdant Grove, Ember Forge, Rose Dusk, Eclipse (true black for OLED screens) and High Contrast. A theme recolors the menus, cards, buttons and the battle arena; element and rarity colors, the gold parry ring and region maps stay the same because they carry meaning. The stylesheet reads theme colors as CSS variables (`--bg`, `--stone`, `--gold` and so on); `:root` in `src/styles.css` holds the Sigil Night values so the first frame looks right. To add a theme, copy one in `src/themes.ts` and add it to `THEMES`; `npm test` checks every color is set and that text, muted text, the accent and the main button stay readable (WCAG contrast 7:1 for text, 4.5:1 for the rest).
 
 The **Pause** button in battle opens the same menu and holds the fight still until it closes; switching away from the app pauses too.
 

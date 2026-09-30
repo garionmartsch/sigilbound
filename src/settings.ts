@@ -5,6 +5,7 @@ import { migrate, replaceSave, resetSave, save } from './save';
 import { current, renderHome, show } from './screens';
 import { decodeSave, encodeSave, type Settings } from './settingsCore';
 import { CAN_BUZZ, SFX, buzz } from './sfx';
+import { THEMES, cssVars, themeById } from './themes';
 import { replay } from './tutorial';
 import { $, $$ } from './util';
 
@@ -13,7 +14,7 @@ import { $, $$ } from './util';
  * opened from a fight it pauses the fight until it closes.
  */
 
-export const VERSION = '0.4.0';
+export const VERSION = '0.5.0';
 
 const sheet = $('#setSheet'), box = $('#setBox');
 let pausedFight = false;
@@ -58,6 +59,17 @@ function render() {
     <div class="sethead"><h2 id="setTitle">${pausedFight ? 'Paused' : 'Settings'}</h2>
       <button class="ghost xbtn" id="setClose" aria-label="${pausedFight ? 'Resume' : 'Close settings'}">✕</button></div>
     ${pausedFight ? '<button class="primary" id="setResume">Resume fight</button>' : ''}
+
+    <section class="sgroup" aria-labelledby="g-theme"><h3 id="g-theme">Theme</h3>
+      <div class="themes" role="radiogroup" aria-labelledby="g-theme">${THEMES.map(t => {
+        const u = t.ui, on = prefs.theme === t.id;
+        return `<button role="radio" aria-checked="${on}" data-tp="${t.id}" class="tpick"
+          style="--p-bg:${u.bg};--p-stone:${u.stone2};--p-line:${u.line};--p-text:${u.text};--p-muted:${u.muted};--p-gold:${u.gold};--p-hi:${u.btnHi};--p-lo:${u.btnLo};--p-glow:${u.glowTop}">
+          <span class="tp-swatch" aria-hidden="true"><i class="tp-panel"><i class="tp-line"></i><i class="tp-line short"></i></i><i class="tp-btn"></i><i class="tp-dot"></i></span>
+          <span class="tp-name">${t.name}</span></button>`;
+      }).join('')}</div>
+      <small class="snote" id="themeBlurb">${themeById(prefs.theme).blurb} Element and rarity colors stay the same in every theme.</small>
+    </section>
 
     <section class="sgroup" aria-labelledby="g-sound"><h3 id="g-sound">Sound &amp; feel</h3>
       ${sw('sound', 'Sound effects')}
@@ -108,6 +120,10 @@ function onClick(ev: Event) {
     setPref(key, !prefs[key] as never);
     if (key === 'sound' && prefs.sound) { SFX.init(); SFX.play('ui'); }
     applyPrefs(); render(); refocus(`[data-sw="${key}"]`); return;
+  }
+  if (t.dataset.tp) {
+    setPref('theme', t.dataset.tp);
+    applyTheme(); render(); refocus(`[data-tp="${t.dataset.tp}"]`); return;
   }
   if (t.dataset.seg) {
     const key = t.dataset.seg as keyof Settings;
@@ -169,8 +185,17 @@ function toast(text: string) {
 /** Re-rendering replaces the buttons, so put keyboard focus back where it was. */
 const refocus = (sel: string) => box.querySelector<HTMLElement>(sel)?.focus({ preventScroll: true });
 
+/** Put the chosen theme's colors on the page, and on the phone's status bar. */
+export function applyTheme() {
+  const t = themeById(prefs.theme), root = document.documentElement;
+  for (const [k, v] of Object.entries(cssVars(t))) root.style.setProperty(k, v);
+  root.dataset.theme = t.id;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t.ui.bg);
+}
+
 /** Settings that change the page rather than the game code. */
 export function applyPrefs() {
+  applyTheme();
   $$('#battle .hint').forEach(h => (h.hidden = !prefs.hints));
 }
 

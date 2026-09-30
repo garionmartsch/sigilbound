@@ -7,6 +7,7 @@ import { FXDRAW, fbPos, ribbon, tornadoX, waveX, type Fx } from './fx';
 import { applyStatus, cleanse, damageDealtMult, damageTakenMult, drainFrom, rollDazeMiss, STATUS, STATUS_INFO, statusList, tempo, tickStatus, type StatusState } from './status';
 import type { Card, ElementKey, Species } from './types';
 import { prefs } from './prefs';
+import { themeById } from './themes';
 import { flashScale, isNumberText, parryWindow, shakeScale, swipeDistances } from './settingsCore';
 import { $, $$, clamp, ease, ell, fit, pick, rand, rgba } from './util';
 import { emit } from './events';
@@ -577,17 +578,18 @@ export function drawBattle(){const bt=B; if(!bt) return;
   c.clearRect(0,0,w,h);
   c.save();
   if(bt.shake>0){c.translate(rand(-1,1)*bt.shake*10,rand(-1,1)*bt.shake*8)}
-  let gr=c.createLinearGradient(0,0,0,h); gr.addColorStop(0,'#1B1229'); gr.addColorStop(0.46,'#2A1B38'); gr.addColorStop(0.461,'#1A1224'); gr.addColorStop(1,'#0E0914');
+  const A=themeById(prefs.theme).arena;
+  let gr=c.createLinearGradient(0,0,0,h); gr.addColorStop(0,A.skyTop); gr.addColorStop(0.46,A.horizon); gr.addColorStop(0.461,A.groundTop); gr.addColorStop(1,A.groundBottom);
   c.fillStyle=gr; c.fillRect(-20,-20,w+40,h+40);
-  gr=c.createRadialGradient(w*0.5,h*0.46,0,w*0.5,h*0.46,w*0.7); gr.addColorStop(0,'rgba(231,150,90,0.18)'); gr.addColorStop(1,'rgba(231,150,90,0)');
+  gr=c.createRadialGradient(w*0.5,h*0.46,0,w*0.5,h*0.46,w*0.7); gr.addColorStop(0,`rgba(${A.glow},0.18)`); gr.addColorStop(1,`rgba(${A.glow},0)`);
   c.fillStyle=gr; c.fillRect(0,0,w,h);
-  c.fillStyle='#140D1D';
+  c.fillStyle=A.spires;
   [[0.06,0.2,0.05],[0.16,0.28,0.035],[0.8,0.16,0.06],[0.92,0.3,0.04],[0.44,0.36,0.025]].forEach(([x,top,wd])=>{
     c.beginPath(); c.moveTo(w*(x-wd),h*0.461); c.lineTo(w*(x-wd*0.6),h*(top+0.04)); c.lineTo(w*x,h*top); c.lineTo(w*(x+wd*0.6),h*(top+0.04)); c.lineTo(w*(x+wd),h*0.461); c.fill();});
-  c.strokeStyle='rgba(231,190,110,0.06)'; c.lineWidth=1;
+  c.strokeStyle=`rgba(${A.lines},0.06)`; c.lineWidth=1;
   for(let i=-6;i<=6;i++){c.beginPath(); c.moveTo(w*0.5,h*0.461); c.lineTo(w*0.5+i*w*0.3,h); c.stroke();}
   bt.embers.forEach(m=>{m.y-=m.v*0.016; if(m.y<0){m.y=1;m.x=Math.random()}
-    c.fillStyle=`rgba(255,170,90,${0.25+0.25*Math.sin(t*2+m.ph)})`; ell(c,m.x*w+Math.sin(t+m.ph)*6,m.y*h,m.r,m.r); c.fill();});
+    c.fillStyle=`rgba(${A.embers},${0.25+0.25*Math.sin(t*2+m.ph)})`; ell(c,m.x*w+Math.sin(t+m.ph)*6,m.y*h,m.r,m.r); c.fill();});
   const e=bt.enemy, u=cur();
   const vx=g.E.x-g.P.x, vy=g.E.y-g.P.y, vd=Math.hypot(vx,vy)||1, ux=vx/vd, uy=vy/vd;
   if(e) drawSigil(c,g.E.x,g.E.y+s*0.86,s*1.35,0.3,ELEM[e.sp.el].color,t*0.4,0.55);

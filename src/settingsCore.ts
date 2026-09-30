@@ -7,6 +7,8 @@
  * and a save code moved to another phone doesn't bring them along.
  */
 
+import { DEFAULT_THEME, THEME_IDS } from './themes';
+
 export type Level3 = 'off' | 'low' | 'full';
 export type Buzz = 'off' | 'light' | 'normal' | 'strong';
 export type Swipe = 'short' | 'normal' | 'long';
@@ -30,6 +32,8 @@ export interface Settings {
   swipe: Swipe;
   /** A longer window to parry in. */
   relaxedParry: boolean;
+  /** Color theme id, see src/themes.ts. */
+  theme: string;
 }
 
 export const SETTINGS_KEY = 'sigilbound-settings';
@@ -39,7 +43,7 @@ export function defaultSettings(reducedMotion = false): Settings {
   return {
     sound: true, volume: 80, buzz: 'normal',
     shake: reducedMotion ? 'off' : 'full', flashes: reducedMotion ? 'low' : 'full',
-    numbers: true, hints: true, swipe: 'normal', relaxedParry: false,
+    numbers: true, hints: true, swipe: 'normal', relaxedParry: false, theme: DEFAULT_THEME,
   };
 }
 
@@ -67,6 +71,7 @@ export function normalizeSettings(raw: unknown, reducedMotion = false, legacy: {
     hints: bool(r.hints, d.hints),
     swipe: oneOf(r.swipe, ['short', 'normal', 'long'] as const, d.swipe),
     relaxedParry: bool(r.relaxedParry, d.relaxedParry),
+    theme: oneOf(r.theme, THEME_IDS, d.theme),
   };
 }
 
