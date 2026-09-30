@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body>
+<title>Sigilbound Art Prompts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&family=Grenze+Gotisch:wght@600;800&display=swap">
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#110D18; --stone:#1C1626; --stone2:#271E34; --line:#3A2D4C;
+  --text:#F0E8F5; --muted:#A898B9; --gold:#E7BE6E;
+  --display:'Grenze Gotisch', Georgia, serif;
+  --ui:'Barlow Semi Condensed','Arial Narrow',system-ui,sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+[hidden]{display:none!important}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);background-image:radial-gradient(120% 40% at 50% -5%,#2A1C3A 0%,rgba(17,13,24,0) 60%);color:var(--text);font-family:var(--ui);font-size:16px;line-height:1.5}
+.wrap{max-width:860px;margin:0 auto;padding-inline:16px;padding-block:28px 60px;display:grid;gap:28px}
+h1{font-family:var(--display);font-weight:800;font-size:clamp(40px,8vw,58px);line-height:1;margin:0;color:var(--gold);text-wrap:balance}
+.lede{color:var(--muted);font-size:17px;max-width:62ch;margin:10px 0 0}
+h2{font-family:var(--display);font-weight:600;font-size:30px;margin:0 0 10px;color:var(--gold)}
+.steps{margin:0;padding-left:1.3em;display:grid;gap:8px;max-width:68ch}
+.steps b{color:var(--text)}
+.steps li{color:var(--muted)}
+.panel{background:var(--stone);border:1px solid var(--line);border-radius:12px;padding:16px}
+.prompt{position:relative;background:#0D0A13;border:1px solid var(--line);border-radius:8px;padding:12px 14px;font-family:var(--mono);font-size:13.5px;line-height:1.55;color:#E6DDEE;white-space:pre-wrap;word-break:break-word;user-select:text;-webkit-user-select:text}
+.phead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.plabel{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.plabel b{color:var(--text);letter-spacing:.04em;text-transform:none;font-size:14px;margin-left:6px}
+button{font-family:var(--ui);font-size:14px;font-weight:600;color:var(--text);background:var(--stone2);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+button.copied{border-color:var(--gold);color:var(--gold)}
+.filters{display:flex;flex-wrap:wrap;gap:6px;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);padding-block:10px;z-index:2}
+.filters button[aria-pressed="true"]{border-color:var(--ec,var(--gold));color:var(--ec,var(--gold))}
+.beast{background:var(--stone);border:1px solid var(--line);border-left:4px solid var(--ec);border-radius:12px;padding:16px;display:grid;gap:14px}
+.bhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 12px}
+.bhead h3{margin:0;font-size:24px;font-weight:700}
+.chip{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:1px 8px;border-radius:999px;border:1px solid currentColor}
+.forms{color:var(--muted);font-size:14px;width:100%}
+.forms b{color:var(--text);font-weight:600}
+.file{font-family:var(--mono);font-size:12px;color:var(--muted);text-transform:none;letter-spacing:0;font-weight:400}
+.plabel .file{display:block;margin-top:2px}
+.tips{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.tip{background:var(--stone);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:var(--muted);font-size:15px}
+.tip b{display:block;color:var(--text);margin-bottom:2px}
+.note{font-size:14px;color:var(--muted);max-width:70ch}
+a{color:var(--gold)}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Sigilbound Art Prompts</h1>
+    <p class="lede">Prompts for Google Gemini's image generation, covering all 21 beasts in their base, evolved and final forms. These make stand-in art until you have a commissioned artist.</p>
+  </header>
+
+  <section>
+    <h2>How to use these</h2>
+    <ol class="steps">
+      <li><b>Start each beast in a fresh Gemini chat.</b> Paste its base-form prompt. Every base prompt already includes the shared style block, so all 21 beasts come out looking like one game.</li>
+      <li><b>Regenerate until one feels right.</b> Ask for 2–3 more tries if needed. Once you love one, keep it as your <b>style reference</b>: attach it to later base prompts and add "Match the art style of the attached image."</li>
+      <li><b>Evolve in the same chat.</b> Paste the evolved-form prompt. It asks Gemini to edit the image it just made, which keeps the face and colors consistent. Then do the same with the final-form prompt.</li>
+      <li><b>Save each image with the file name shown</b> (for example <span class="file">cindermaw_0.png</span>, where 0, 1 and 2 are the form number). When the game gets image support it can pick them up by name.</li>
+      <li><b>Remove the backgrounds.</b> Gemini doesn't reliably make transparent images, so the prompts ask for a plain flat background that's easy to cut out with a background-removal tool.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Shared style block</h2>
+    <p class="note" style="margin:0 0 10px">This is already built into every base prompt below. It's here on its own in case you want to tweak the look, or use it with a creature idea of your own.</p>
+    <div class="panel">
+      <div class="phead"><span class="plabel">Style</span><button data-copy="style">Copy</button></div>
+      <div class="prompt" id="style"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Beasts</h2>
+    <div class="filters" id="filters" role="toolbar" aria-label="Filter by element"></div>
+    <div id="list" style="display:grid;gap:14px"></div>
+  </section>
+
+  <section>
+    <h2>Getting consistent results</h2>
+    <div class="tips">
+      <div class="tip"><b>Name drift</b>If Gemini adds text or a card frame, reply "Remove all text and borders, keep the creature identical."</div>
+      <div class="tip"><b>Wrong direction</b>The beasts should face right. If one faces left, ask Gemini to mirror it, or flip it yourself. The game mirrors enemies automatically.</div>
+      <div class="tip"><b>Style wandering</b>Attach your best image and add "Match the art style, line weight and shading of the attached image exactly."</div>
+      <div class="tip"><b>Evolution looks like a different creature</b>Reply "Keep the same face, eye shape and color palette as the previous image; only add the listed changes."</div>
+    </div>
+  </section>
+
+  <p class="note">Before any of this art ships in a released game, check Google's current terms for commercial use of Gemini images. Also keep in mind that purely AI-generated images generally can't be copyrighted in the US, so treat these as temporary art rather than the final look of the game.</p>
+</div>
+
+<script>
+(()=>{
+const STYLE=`Stylized 2D creature illustration for a mobile monster-collecting card game. Chunky, highly readable silhouette with slightly chibi proportions (big head and eyes, compact body). Bold clean shapes, clean dark outlines, soft painterly shading with a bright rim light, and a subtle glow in the creature's element color. Full body, centered, three-quarter view facing right, the whole creature in frame with generous margin. Plain flat dark violet background (#1C1626) with no scenery, no ground, no text, no watermark and no card frame. Square 1:1 image.`;
+
+const ELEM={
+  pyre:{name:'Pyre',color:'#E4683A'}, tide:{name:'Tide',color:'#3E9ED6'}, thorn:{name:'Thorn',color:'#7DB85B'},
+  frost:{name:'Frost',color:'#8FD3E8'}, storm:{name:'Storm',color:'#E8D04A'}, stone:{name:'Stone',color:'#C39E70'},
+  gale:{name:'Gale',color:'#9FDCC0'}, radiant:{name:'Radiant',color:'#FFE08A'}, umbral:{name:'Umbral',color:'#B58BF0'}
+};
+const RAR={common:'#B9ACC8',rare:'#7CC0EE',epic:'#E7BE6E'};
+
+// [key, element, rarity, forms, base description, evolved changes, final changes]
+const BEASTS=[
+ ['cindermaw','pyre','common',['Cindermaw','Scorchmaw','Infernomaw'],
+  'A round, stocky little fire beast with molten red-orange skin, a warm ember-orange belly, two curved bone-white horns, a wide grin full of small sharp teeth, glowing pale-yellow eyes under angry brows, and short stubby arms. Hot-headed and grumpy. Fire element.',
+  'Noticeably bigger and more muscular. Four horns instead of two. Glowing lava cracks across the skin, and wisps of smoke from its nostrils.',
+  'A hulking, powerful version. Six horns forming a crown, plates of cooled obsidian armor with molten seams, a mane of flame, small embers orbiting it, and a strong fiery aura.'],
+ ['ashwing','pyre','rare',['Ashwing','Cinderwing','Solwing'],
+  'A living flame spirit with a teardrop body of golden-yellow fire fading to orange at the edges, three flickering flame tips on top, one large friendly cyclops eye, two small floating flame hands, and a trail of embers beneath it instead of legs. Playful and quick. Fire element.',
+  'Grows a pair of wings made of flame, and two small fireballs orbit it. The fire burns brighter and hotter.',
+  'A radiant sun-fire spirit with three eyes, large sweeping flame wings, and a blazing solar halo behind its head, with gold rune symbols floating around it.'],
+ ['vhal','pyre','epic',['Vhal the Kilnborn','Vhal, Forge Tyrant','Vhal, Heart of the Kiln'],
+  'A towering kiln demon with a deep crimson body, a glowing ember-orange chest, four large swept-back horns, forge-like cracks glowing across its hide, massive fists and a fierce, noble expression. Legendary and intimidating. Fire element.',
+  'Plated in dark obsidian armor with molten seams, six horns, fists like forge hammers, and heat shimmering off its body.',
+  'A colossal form with an open furnace in its chest showing a blazing core, a crown of horns, gold rune symbols orbiting it, and a powerful red-gold aura.'],
+ ['brambleback','thorn','common',['Brambleback','Thornhide','Elderbramble'],
+  'A round, sturdy forest beast with a leafy green body, a pale green belly, and a back covered in sharp pale thorny spikes. No horns. A grumpy toothy grin, pale yellow eyes and short stubby arms. Stubborn and tough. Nature element.',
+  'Bigger, with longer and more numerous thorns and two horns of twisted wood. Small leaves sprout along its back.',
+  'An ancient guardian with bark-armored skin, a crown of flowering thorns, a mossy beard, tiny glowing mushrooms growing on its shoulders and a green aura.'],
+ ['mosswraith','thorn','rare',['Mosswraith','Bloomwraith','Verdant Revenant'],
+  'A floating forest spirit made of glowing moss, with a soft green teardrop body, one large gentle eye, two small leaf-like floating hands and drifting spores trailing beneath it. Calm and mysterious. Nature element.',
+  'Flowers bloom across its body and glowing pollen motes orbit it. The glow brightens.',
+  'A luminous forest phantom with three eyes, a crown of flowers and vines, long trailing tendrils of moss, and gold rune symbols orbiting it.'],
+ ['ysra','thorn','epic',['Ysra of the Hedge','Ysra, Thorn Regent','Ysra, Queen Eternal'],
+  'A regal serpent made of vines, with deep green scales, a lime-yellow belly, leaf-shaped fins on the sides of its head and a small crown of pale thorns. It rises from a coiled base. Proud and elegant. Nature element.',
+  'Larger leaf fins, blooming roses along its coils and a taller thorn crown.',
+  'A towering serpent queen with a golden crown of thorns, flowers blooming all along its body, a flowing leaf mane, and gold rune symbols orbiting it.'],
+ ['tidecoil','tide','common',['Tidecoil','Rivercoil','Leviacoil'],
+  'A small sea serpent with ocean-blue scales and a light aqua belly, coiled up on itself, with fin-shaped ears, big curious eyes and a little smile. Friendly and curious. Water element.',
+  'Longer and larger with bigger flowing fins and ribbons of water swirling around it.',
+  'A leviathan-like sea serpent with a crown of coral, glowing blue markings, rings of water circling it and gold rune symbols orbiting it.'],
+ ['brinehound','tide','rare',['Brinehound','Stormhound','Tempest Hound'],
+  'A stocky sea-dog beast with a deep teal body, a lighter aqua belly, fin-shaped ears, a few barnacles on its shoulders and a toothy grin. Loyal and scrappy. Water element.',
+  'Bigger, with coral-like horns, a mane of sea foam and larger fins.',
+  'A huge tempest beast with a swirling whirlpool mane, glowing blue markings, crashing water around its feet and gold rune symbols orbiting it.'],
+ ['mawdeep','tide','epic',['Mawdeep','Trenchmaw','Abyssal Mawdeep'],
+  'A floating abyssal water spirit with a deep navy body that glows bright blue at the edges, three eyes (one large and two small), bioluminescent spots, and ghostly trailing wisps beneath it. Eerie and ancient. Water element.',
+  'Grows a glowing anglerfish lure from its head, and more bioluminescent spots and orbiting water droplets.',
+  'An enormous deep-sea spirit with a wide glowing maw, rows of luminous eyes, dark flowing tendrils and gold rune symbols orbiting it.'],
+ ['shardling','frost','common',['Shardling','Glacierguard','Permafrost Colossus'],
+  'A small, blocky ice golem made of frosted blue ice, with a glowing white diamond-shaped core in its chest, sharp ice crystals growing from its shoulders, a narrow glowing eye slit, and big heavy fists. Sturdy and quiet. Ice element.',
+  'Taller and broader, with more ice crystals, thick frost armor and a cold mist rolling off it.',
+  'A massive glacier fortress with a crown of towering ice crystals, a blazing white core, snow drifting around it and gold rune symbols orbiting it.'],
+ ['rimewing','frost','rare',['Rimewing','Hoarfrost Roc','Aurora Roc'],
+  'A round frost bird with pale blue feathers tipped in white, an icy crest, a small gold beak, big gentle eyes, and wings spread wide. Graceful. Ice element.',
+  'Larger wings with icicle-tipped feathers and a taller crystal crest.',
+  'A majestic roc with aurora-colored light trailing from its wings, a crystal crest, glittering frost and gold rune symbols orbiting it.'],
+ ['voltfinch','storm','common',['Voltfinch','Arcfinch','Thunderbird'],
+  'A small round lightning finch with golden-yellow feathers, a spiky electric crest, big bright eyes, and little sparks crackling around its wings. Hyperactive and cheeky. Lightning element.',
+  'Bigger, with lightning-tipped wings, a larger crest and arcs of electricity between its feathers.',
+  'A majestic storm bird with wings made of thunderclouds crackling with lightning, a blazing crest and gold rune symbols orbiting it.'],
+ ['thunderhorn','storm','rare',['Thunderhorn','Stormcaller','Tempest Titan'],
+  'A stocky storm beast with an indigo-purple body, glowing yellow lightning-bolt markings, two horns crackling with electricity, and a fierce toothy grin. Loud and bold. Lightning element.',
+  'Four horns acting like lightning rods, a mane of dark storm clouds and more intense lightning markings.',
+  'A hulking titan with a crown of lightning, storm clouds swirling around its shoulders, glowing eyes and gold rune symbols orbiting it.'],
+ ['cobbleguard','stone','common',['Cobbleguard','Bastion','Mountainheart'],
+  'A small stone golem made of rough brown cobblestones, with a glowing amber core in its chest, a glowing amber eye slit, rough crystals on its shoulders and big blocky fists. Dependable and slow. Earth element.',
+  'Built like a small fortress, with thicker stone plates, bigger shoulder crystals and moss in the cracks.',
+  'A mountain-sized golem with rocky peaks rising from its shoulders, a magma-amber core, pebbles floating around it and gold rune symbols orbiting it.'],
+ ['quarryback','stone','rare',['Quarryback','Boulderhide','Tectonic Behemoth'],
+  'A round, armadillo-like rock beast with a gray-brown stony hide, a back covered in jagged rock spikes, pale amber eyes and a toothy grin. Tough and grumpy. Earth element.',
+  'Larger, with thick boulder-like armor plates and two stone horns.',
+  'A behemoth with shifting tectonic plates across its back, glowing amber cracks between them and gold rune symbols orbiting it.'],
+ ['zephyrkit','gale','common',['Zephyrkit','Windreaver','Skyrender'],
+  'A light mint-green bird with swirling feathers, a cream-white chest, a curling crest, a small gold beak and a cheerful face, surrounded by little visible wind swirls. Carefree. Wind element.',
+  'Larger, with swept-back blade-like wings and stronger wind currents curling around it.',
+  'A grand sky bird with long flowing wings, visible spiraling wind currents, a tall crest and gold rune symbols orbiting it.'],
+ ['galewyrm','gale','rare',['Galewyrm','Squallwyrm','Cyclone Wyrm'],
+  'An airy serpent with mint-green scales, a pale cream belly, wing-like fins on its head and wisps of wind trailing from its body. Swift and aloof. Wind element.',
+  'Longer and larger, with bigger wing fins and a small whirlwind around its coils.',
+  'A serpent riding a spiraling cyclone, with a crown of feathers, long wing-fins and gold rune symbols orbiting it.'],
+ ['lumenfawn','radiant','rare',['Lumenfawn','Dawnstag','Solar Hart'],
+  'A gentle light beast shaped like a young fawn, with soft golden fur, a pale cream belly, small glowing antler-horns, bright white eyes and a warm golden glow. Kind and serene. Light element.',
+  'Larger, with a full set of branching antlers and a soft halo behind its head.',
+  'A radiant stag with sunburst antlers, golden light pouring from its body, and gold rune symbols orbiting it.'],
+ ['seraphel','radiant','epic',['Seraphel','Seraphel, Bright Wing','Seraphel, Crown of Dawn'],
+  'An angelic golden bird with cream and gold feathers, a halo-shaped crest, large luminous wings, bright white eyes and a noble expression. Legendary and holy. Light element.',
+  'Four wings instead of two, a brighter halo, and feathers edged in light.',
+  'Six radiant wings, a crown shaped like the rising sun, beams of light behind it, and gold rune symbols orbiting it.'],
+ ['duskmote','umbral','rare',['Duskmote','Gloamwisp','Eclipse Shade'],
+  'A floating shadow wisp with a dark purple flame-like body fading to violet at the edges, one glowing lavender eye, small shadowy floating hands and dark wisps trailing beneath it. Mischievous. Dark element.',
+  'Larger and darker, with two small orbs of violet light circling it and longer shadow trails.',
+  'A shade with three glowing eyes, a black eclipse halo ringed in violet light, and gold rune symbols orbiting it.'],
+ ['nyxhollow','umbral','epic',['Nyxhollow','Nyxhollow, Void Warden','Nyxhollow, End of Stars'],
+  'An obsidian void golem with a near-black purple body, a glowing violet diamond core in its chest, violet crystals on its shoulders, a glowing violet eye slit, and heavy blocky fists. Ominous and silent. Dark element.',
+  'Taller, with more violet crystals and dark armor plates, with shadow flowing off it.',
+  'A colossal golem whose body cracks open to reveal a starry night sky inside, with a crown of void crystals and gold rune symbols orbiting it.'],
+];
+
+const FORM_LABEL=['Base form','Evolved form','Final form'];
+function basePrompt(b){return `${STYLE}\n\nCreature: ${b[3][0]}. ${b[4]}`}
+function evoPrompt(b,i){
+  const prev=b[3][i-1], name=b[3][i];
+  return `Using the creature in the previous image (${prev}) as the reference, create its ${i===1?'evolved':'final evolved'} form, called ${name}. Keep the exact same art style, colors, face and eye shape so it is clearly the same creature grown stronger. Changes: ${b[4+i]} Keep the same framing: full body, centered, three-quarter view facing right, plain flat dark violet background (#1C1626), no text, no frame.`;
+}
+
+document.getElementById('style').textContent=STYLE;
+
+const filters=document.getElementById('filters');
+let active='all';
+filters.innerHTML=`<button data-f="all" aria-pressed="true">All 21</button>`+Object.entries(ELEM).map(([k,v])=>`<button data-f="${k}" aria-pressed="false" style="--ec:${v.color}">${v.name}</button>`).join('');
+
+const list=document.getElementById('list');
+list.innerHTML=BEASTS.map(b=>{
+  const e=ELEM[b[1]];
+  const prompts=[basePrompt(b),evoPrompt(b,1),evoPrompt(b,2)];
+  return `<article class="beast" data-el="${b[1]}" style="--ec:${e.color}">
+    <div class="bhead"><h3>${b[3][0]}</h3><span class="chip" style="color:${e.color}">${e.name}</span><span class="chip" style="color:${RAR[b[2]]}">${b[2]}</span>
+      <div class="forms">${b[3].map((n,i)=>`<b>${n}</b>`).join(' → ')}</div></div>
+    ${prompts.map((p,i)=>`<div>
+      <div class="phead"><span class="plabel">${FORM_LABEL[i]}<b>${b[3][i]}</b> <span class="file">${b[0]}_${i}.png</span></span><button data-copy="${b[0]}-${i}">Copy</button></div>
+      <div class="prompt" id="${b[0]}-${i}">${p.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div></div>`).join('')}
+  </article>`;
+}).join('');
+
+filters.addEventListener('click',ev=>{
+  const btn=ev.target.closest('button'); if(!btn) return;
+  active=btn.dataset.f;
+  filters.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===btn)));
+  list.querySelectorAll('.beast').forEach(a=>{a.hidden=!(active==='all'||a.dataset.el===active)});
+});
+
+document.addEventListener('click',ev=>{
+  const btn=ev.target.closest('[data-copy]'); if(!btn) return;
+  const el=document.getElementById(btn.dataset.copy); const text=el.textContent;
+  const done=()=>{btn.textContent='Copied';btn.classList.add('copied');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},1600)};
+  const fallback=()=>{const r=document.createRange(); r.selectNodeContents(el); const s=getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent='Selected, press copy';};
+  try{navigator.clipboard.writeText(text).then(done,fallback)}catch(e){fallback()}
+});
+})();
+</script>
+</body>
+</html>

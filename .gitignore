@@ -1,0 +1,26 @@
+# OS and editor clutter
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Dependencies and build output (for the upcoming Phaser + Capacitor project)
+node_modules/
+dist/
+build/
+.vite/
+ios/App/Pods/
+android/.gradle/
+android/app/build/
+
+# Python
+__pycache__/
+.venv/
+
+# Raw art before cutout; keep only the exported art/*.webp in the repo
+art/raw/
+
+# Secrets
+.env
+.env.*
