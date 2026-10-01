@@ -41,10 +41,13 @@ Every push to GitHub runs the type check, the tests and the build automatically.
 
 - **Tutorial:** new players get a short training fight where a coach teaches one move at a time (strike, slash, special, parry, swapping, reading matchups) while a ghost finger demonstrates each gesture. It can't be lost. A spotlight tour of the menus follows: a guaranteed-Rare first summon, feeding a card, how evolving works, then the campaign. It can be skipped at any point, resumes after a restart, and can be replayed from the home screen.
 - **Endless campaign:** nine elemental regions, each a winding trail of eight stages plus two side stages, ruled by that element's Legendary. Beyond the Nightfall, the Sigil Gate pits you against a Mythic; beating it opens the next Circle, the same world harder, with evolved rulers, forever. Stages earn up to three stars (win, lose no beast, beat par time); region star totals open chests, with an Epic card at 30 stars in Circle I and the region's Legendary after that. Cleared stages can be replayed for shards, gold and card drops. Each region opens with a short story, and each boss with a line of its own.
-- **Combat:** swipe gestures, parry timing, hit-stop and knockback, elemental specials, three-wave stages ending in a leader or a ruler.
+- **Combat:** swipe gestures, parry timing, hit-stop and knockback, elemental specials, three-wave stages ending in a leader or a boss.
+- **Enemy groups:** the first few stages send one enemy at a time; after that waves bring two or three at once. Tap an enemy (or its chip at the top, or press T) to aim at it. Enemies take turns attacking, so every wind-up can be read and parried, and a parry's counter always goes back at whoever attacked. Side stage 1 of each region is a swarm.
+- **Bosses:** wardens, rulers and the Gate's guardian fight in phases (2, 3 and 4). Each new phase starts with a roar: the boss shakes off its ailments, speeds up and learns another signature move. **Smash** is a long charge that can't be parried; break it with a Special or by hitting hard enough while it charges (the BREAK meter). **Sweep** hits your whole team, benched beasts too, unless you parry it. **Barrage** is three quick strikes, each parried on its own. Each element names its moves (Pyre's are Kiln Breath, Ashfall and Ember Flurry), and the stage card lists a boss's moves and counters before you fight.
+- **Wardens:** nine boss-only beasts, one per element, that can never be summoned, dropped or won. Each region's own warden guards main stage 4, and side stage 2 holds a wandering warden of the element that beats the region.
 - **Nine elements:** Pyre, Tide, Thorn, Frost, Storm, Stone and Gale form a wheel where each is strong against two and weak to two. Radiant and Umbral are strong against each other.
 - **Status effects:** every element leaves a mark. Burn, Soak, Poison, Chill (which becomes Freeze), Shock, Sunder, Daze, Bless and Curse, with combos (Soak + Shock doubles the shock; Soak + Chill freezes at once). Enemies inflict them too; a parry blocks them.
-- **96 beasts, three forms each (288 creatures):** 64 hand-designed plus 32 generated commons, across five rarities from Common to Mythic. Seven body types plus add-on wings, tails and markings are drawn in code, with image art replacing them as it's added.
+- **96 collectible beasts, three forms each (288 creatures),** plus 9 boss-only wardens: 64 hand-designed plus 32 generated commons, across five rarities from Common to Mythic. Seven body types plus add-on wings, tails and markings are drawn in code, with image art replacing them as it's added.
 - **Cards:** every summon or drop is its own card. You can feed cards to level up and raise skill level, evolve at max level by merging two copies, lock or sell cards, and choose a team of three.
 - **Economy:** soul shards for Rift Summons (all rarities, odds shown), gold for Beast Calls (mostly commons), and battle card drops.
 - **Sound and vibration:** synthesized sound effects with no audio files, plus vibration on Android.
@@ -60,10 +63,12 @@ src/
   beasts/
     core.ts         Hand-designed beasts: stats, looks, forms, art-prompt descriptions
     generated.ts    Common beasts made by tools/generate-commons.ts (don't edit by hand)
+    wardens.ts      The nine boss-only wardens
     art.ts          Which beasts have image art
   status.ts         Status effect rules and tuning numbers
   regions.ts        The campaign's world: region names, stage names, story, rulers, colors
-  campaign.ts       Campaign rules: stage plans, difficulty, unlocks, stars, chests (no page access, fully tested)
+  campaign.ts       Campaign rules: stage plans, enemy groups, wardens, difficulty, unlocks, stars, chests (no page access, fully tested)
+  bosses.ts         Boss rules: phases, signature moves and their names, pacing (no page access, tested)
   map.ts            The campaign map screen, stage cards, story cards and chests
   tutorial.ts       The first-time tutorial: coach, spotlight, lesson rules
   tutorialFlow.ts   Tutorial step order (no page access, so it's testable)
@@ -99,6 +104,8 @@ tools/
 **Tune status effects.** Durations, damage and chances are in `STATUS` at the top of `src/status.ts`.
 
 **Change the campaign.** Region names, stage names, story lines and which Legendary rules a region are in `src/regions.ts`; that file is only words and settings. Difficulty (enemy levels, which rarities appear, when enemies evolve), par times, chest rewards and first-clear bonuses are in `src/campaign.ts`. Stage enemies are generated from each stage's id, so changing a region's `id` would change its enemies and orphan players' stars; rename `name` instead.
+
+**Change the bosses.** Phase thresholds, which moves each kind of boss uses per phase, and how many ordinary attacks come between signature moves are in `KITS` in `src/bosses.ts`; wind-up times, damage and how much damage breaks a smash are in `MOVES`; move names per element in `MOVE_NAMES`. How many enemies come at once is `groupSizes` in `src/campaign.ts`, and how much health and attack each member of a group keeps is `GROUP_HP` and `GROUP_ATK` at the top of `src/battle.ts`.
 
 **Change the tutorial.** Lesson text and what each step points at are in `src/tutorial.ts` (`BATTLE` for the training fight, `menuView` for the tour). The step order is in `src/tutorialFlow.ts`, and the training fight's team, enemy and rewards are at the top of `src/battle.ts` (`TRAINING_TEAM`, `makeTrainingEnemy`, `TRAINING_REWARD`). To add a step, add its id to `tutorialFlow.ts`, then give it text in `tutorial.ts` and a completion event in `handle`.
 

@@ -1,4 +1,5 @@
-import { SPECIES } from './data';
+import { COLLECTIBLE_KEYS, ELEM, ELEM_ORDER, SPECIES } from './data';
+import type { BossTier } from './bosses';
 import { REGIONS, SIGIL_GATE, type Region } from './regions';
 import type { ElementKey, RarityKey } from './types';
 
@@ -12,6 +13,12 @@ import type { ElementKey, RarityKey } from './types';
  *
  * Every stage's enemies come from a random generator seeded with the stage's
  * id, so the map's preview always matches the fight, and replays are the same.
+ *
+ * A stage is three waves, and a wave is a group of one to three enemies
+ * fighting at once. The first few stages of the game send one at a time;
+ * after that groups grow with difficulty. Side stage 1 is a swarm. Each region
+ * also has two wardens (boss-only beasts): its own at main stage 4, and a
+ * wandering one, of the element that beats the region, at side stage 2.
  */
 
 export type StageKind = 'main' | 'side' | 'gate';
@@ -34,6 +41,8 @@ export interface EnemySpec {
   leader: boolean;
   /** A region boss or the Gate's guardian. */
   boss: boolean;
+  /** Set for every enemy that fights with boss phases and signature moves. */
+  tier?: BossTier;
 }
 
 export interface StagePlan extends StageRef {
@@ -44,7 +53,8 @@ export interface StagePlan extends StageRef {
   el: ElementKey;
   /** Overall difficulty: rises by one per main stage, forever. */
   difficulty: number;
-  waves: EnemySpec[];
+  /** Three waves; each is a group of enemies that fight at the same time. */
+  waves: EnemySpec[][];
   /** Seconds to beat for the third star. */
   par: number;
   isBoss: boolean;
@@ -134,6 +144,31 @@ function evoFor(d: number, leader: boolean): number {
   return d >= 45 ? 2 : d >= 12 ? 1 : 0;
 }
 
+/** The boss-only warden of an element. */
+export function wardenFor(el: ElementKey): string {
+  const k = Object.keys(SPECIES).find(k => SPECIES[k].bossOnly && SPECIES[k].el === el);
+  if (!k) throw new Error(`No warden for ${el}`);
+  return k;
+}
+/** The element that beats this one (the first in the chart), whose warden wanders into the region. */
+export const nemesisOf = (el: ElementKey): ElementKey => ELEM_ORDER.find(o => ELEM[o].beats.includes(el))!;
+
+/** Main stage (0-based) where a region's own warden waits. */
+export const WARDEN_STAGE = 3;
+
+/** How many enemies fight at once in each of a stage's three waves. */
+export function groupSizes(r: StageRef, d: number, random: () => number): [number, number, number] {
+  if (r.kind === 'gate') return [1, 2, 1];
+  if (r.kind === 'side') return r.index === 0 ? [2, 3, 3] : [2, 2, 1];
+  const bossWave = r.index === MAIN_STAGES - 1 || r.index === WARDEN_STAGE;
+  if (d <= 4) return [1, 1, 1];
+  const trio = d >= 25 ? 0.35 : 0;
+  const w1 = d >= 17 ? (random() < trio ? 3 : 2) : 1;
+  const w2 = random() < trio ? 3 : 2;
+  const w3 = !bossWave && d >= 20 && random() < 0.5 ? 2 : 1;
+  return [w1, w2, w3];
+}
+
 /** The full plan for one stage: its name, label, three waves of enemies and par time. */
 export function planStage(r: StageRef): StagePlan {
   const id = stageId(r), d = difficulty(r), random = rng(id);
@@ -142,35 +177,53 @@ export function planStage(r: StageRef): StagePlan {
   const bossEvo = Math.min(2, r.circle - 1);
 
   if (r.kind === 'gate') {
-    const legends = Object.keys(SPECIES).filter(k => SPECIES[k].rarity === 'legendary');
+    const legends = COLLECTIBLE_KEYS.filter(k => SPECIES[k].rarity === 'legendary');
     const guardian = SIGIL_GATE.bosses[(r.circle - 1) % SIGIL_GATE.bosses.length];
-    const waves: EnemySpec[] = [0, 1].map(w => ({ key: pick(legends), evo: bossEvo, lvl: levelFor(d, w, true, false), leader: true, boss: false }));
-    waves.push({ key: guardian, evo: bossEvo, lvl: levelFor(d, 2, false, true), leader: false, boss: true });
-    return { ...r, id, name: SIGIL_GATE.name, label: `${circleTag}Gate`, el: SPECIES[guardian].el, difficulty: d, waves, par: 130, isBoss: true, bossLine: SIGIL_GATE.bossLine };
+    const sizes = groupSizes(r, d, random);
+    const waves: EnemySpec[][] = [0, 1].map(w => Array.from({ length: sizes[w] }, () =>
+      ({ key: pick(legends), evo: bossEvo, lvl: levelFor(d, w, true, false), leader: true, boss: false })));
+    waves.push([{ key: guardian, evo: bossEvo, lvl: levelFor(d, 2, false, true), leader: false, boss: true, tier: 'guardian' }]);
+    return { ...r, id, name: SIGIL_GATE.name, label: `${circleTag}Gate`, el: SPECIES[guardian].el, difficulty: d, waves, par: parFor(130, waves), isBoss: true, bossLine: SIGIL_GATE.bossLine };
   }
 
   const region: Region = REGIONS[r.region];
   const isBoss = r.kind === 'main' && r.index === MAIN_STAGES - 1;
   const onElement = (k: string) => SPECIES[k].el === region.el;
-  const waves: EnemySpec[] = [];
-  for (let w = 0; w < 3; w++) {
-    if (isBoss && w === 2) {
-      waves.push({ key: region.boss, evo: bossEvo, lvl: levelFor(d, w, false, true), leader: false, boss: true });
-      continue;
-    }
-    const leader = w === 2;
+  const wardenHere = r.kind === 'main' && r.index === WARDEN_STAGE ? wardenFor(region.el)
+    : r.kind === 'side' && r.index === 1 ? wardenFor(nemesisOf(region.el)) : null;
+  const sizes = groupSizes(r, d, random);
+  const one = (w: number, leader: boolean): EnemySpec => {
     const rarities = allowedRarities(d, leader);
-    let pool = Object.keys(SPECIES).filter(k => rarities.includes(SPECIES[k].rarity) && SPECIES[k].rarity !== 'mythic');
+    let pool = COLLECTIBLE_KEYS.filter(k => rarities.includes(SPECIES[k].rarity) && SPECIES[k].rarity !== 'mythic');
     // Mostly the region's own element, so players learn to bring counters.
     const home = pool.filter(onElement);
     if (home.length && random() < 0.75) pool = home;
-    waves.push({ key: pick(pool), evo: evoFor(d, leader), lvl: levelFor(d, w, leader, false), leader, boss: false });
+    return { key: pick(pool), evo: evoFor(d, leader), lvl: levelFor(d, w, leader, false), leader, boss: false };
+  };
+  const waves: EnemySpec[][] = [];
+  for (let w = 0; w < 3; w++) {
+    if (isBoss && w === 2) {
+      waves.push([{ key: region.boss, evo: bossEvo, lvl: levelFor(d, w, false, true), leader: false, boss: true, tier: 'ruler' }]);
+      continue;
+    }
+    if (wardenHere && w === 2) {
+      waves.push([{ key: wardenHere, evo: Math.min(2, evoFor(d, true)), lvl: levelFor(d, w, true, false) + 1, leader: false, boss: false, tier: 'warden' }]);
+      continue;
+    }
+    // The third wave is led by a tougher leader; any others with it are ordinary.
+    waves.push(Array.from({ length: sizes[w] }, (_, i) => one(w, w === 2 && i === 0)));
   }
   const name = r.kind === 'main' ? region.stages[r.index] : region.sides[r.index];
   const label = r.kind === 'main' ? `${circleTag}${r.region + 1}-${r.index + 1}` : `${circleTag}${r.region + 1}-S${r.index + 1}`;
-  const par = isBoss ? 110 : r.kind === 'side' ? 85 : 75;
+  const par = parFor(isBoss ? 110 : wardenHere ? 95 : r.kind === 'side' ? 85 : 75, waves);
   return { ...r, id, name, label, el: region.el, difficulty: d, waves, par, isBoss, bossLine: isBoss ? region.bossLine : undefined };
 }
+
+/** Par time grows with every enemy past the first three. */
+const parFor = (base: number, waves: EnemySpec[][]) => base + 8 * Math.max(0, waves.flat().length - 3);
+
+/** The enemy with boss phases in a plan, if any (wardens, rulers and guardians). */
+export const planBoss = (p: StagePlan): EnemySpec | undefined => p.waves.flat().find(e => e.tier);
 
 /** Every stage in a region, main trail first, then the side stages. */
 export function regionStages(circle: number, region: number): StageRef[] {
@@ -245,7 +298,7 @@ export function chestReward(circle: number, region: number, milestone: number): 
   if (milestone === CHEST_MILESTONES[0]) return { shards: 100 * circle, gold: 0 };
   if (milestone === CHEST_MILESTONES[1]) return { shards: 100 * circle, gold: 800 * circle };
   if (circle > 1) return { shards: 0, gold: 0, card: reg.boss };
-  const epics = Object.keys(SPECIES).filter(k => SPECIES[k].el === reg.el && SPECIES[k].rarity === 'epic').sort();
+  const epics = COLLECTIBLE_KEYS.filter(k => SPECIES[k].el === reg.el && SPECIES[k].rarity === 'epic').sort();
   return { shards: 0, gold: 0, card: epics[Math.floor(rng(regionKey(circle, region))() * epics.length)] };
 }
 

@@ -14,7 +14,10 @@ export type GameEvent =
   | 'fused' | 'evolved'           // forge animation finished
   | 'fight'                       // player pressed the Campaign button
   | 'skipTutorial'                // player skipped from the training fight
-  | 'settings';                   // settings menu opened (true) or closed (false)
+  | 'settings'                    // settings menu opened (true) or closed (false)
+  | 'target'                      // player aimed at a different enemy
+  | 'phase'                       // a boss started a new phase; data: phase index
+  | 'bossMove';                   // a boss began a signature move; data: move kind
 
 type Listener = (ev: GameEvent, data?: unknown) => void;
 const listeners = new Set<Listener>();

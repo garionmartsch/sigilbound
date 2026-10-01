@@ -1,5 +1,5 @@
 import { emit, hooks } from './events';
-import { BOX, CALL_COST, COST, ELEM, ELEM_ORDER, EVO_LABEL, FORMS, MAX_EVO, MAX_SKILL, RARITY, RARITY_ORDER, SPECIES, pickRarity, addXp, capOf, evoCost, feedXp, fuseCost, nameOf, rarOf, sellOf, simXp, statsOf, xpNext } from './data';
+import { BOX, CALL_COST, COLLECTIBLE_KEYS, COST, ELEM, ELEM_ORDER, EVO_LABEL, FORMS, MAX_EVO, MAX_SKILL, RARITY, RARITY_ORDER, SPECIES, pickRarity, addXp, capOf, evoCost, feedXp, fuseCost, nameOf, rarOf, sellOf, simXp, statsOf, xpNext } from './data';
 import { drawMonster, drawSigil } from './render';
 import { cardById, fodderFor, newCard, partnersFor, persist, save } from './save';
 import type { Card, RarityKey } from './types';
@@ -40,14 +40,14 @@ export function renderAltar(){
   const g=$<HTMLButtonElement>('#btnCall'); g.disabled=full||save.gold<CALL_COST||!!A.anim;
   g.textContent=full?'Sell or feed cards to make room':(save.gold<CALL_COST?`Beast Call · need ${CALL_COST-save.gold} more gold`:`Beast Call · ${CALL_COST} gold`);
   $('#oddsT').innerHTML=`<tr><th>Rarity</th><th class="n">Rift</th><th class="n">Call</th><th>Beasts</th></tr>`+
-    RARITY_ORDER.map(r=>{const v=RARITY[r], pool=Object.values(SPECIES).filter(s=>s.rarity===r);
+    RARITY_ORDER.map(r=>{const v=RARITY[r], pool=COLLECTIBLE_KEYS.map(k=>SPECIES[k]).filter(s=>s.rarity===r);
       const who=pool.length<=5?pool.map(s=>s.name).join(', '):`${pool.length} beasts`;
       return `<tr><td><span class="chip ${r}">${v.label}</span></td><td class="n">${v.w}%</td><td class="n">${v.call}%</td><td>${who}</td></tr>`}).join('');
 }
 /** Pick a beast for a summon: first a rarity by its published rate, then a beast of that rarity. */
 export function roll(kind: 'rift'|'call'): string{
   const rar=pickRarity(kind,Math.random()*100,kind==='rift'?hooks.summonRarity:null);
-  return pick(Object.keys(SPECIES).filter(k=>SPECIES[k].rarity===rar));
+  return pick(COLLECTIBLE_KEYS.filter(k=>SPECIES[k].rarity===rar));
 }
 export function summon(kind: 'rift'|'call'){
   if(A.anim||save.roster.length>=BOX) return;

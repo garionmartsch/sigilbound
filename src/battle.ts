@@ -1,4 +1,4 @@
-import { BOX, ELEM, FORMS, SPECIES, addXp, capOf, elemMult, nameOf, statsOf } from './data';
+import { BOX, ELEM, FORMS, SPECIES, addXp, capOf, collectible, elemMult, nameOf, statsOf } from './data';
 import { drawMonster, drawSigil } from './render';
 import { newCard, persist, save, teamMembers } from './save';
 import { current, show } from './screens';
@@ -12,6 +12,7 @@ import { flashScale, isNumberText, parryWindow, shakeScale, swipeDistances } fro
 import { $, $$, clamp, ease, ell, fit, pick, rand, rgba } from './util';
 import { emit } from './events';
 import { firstClearBonus, nextMain, openableChests, planStage, recordClear, stageUnlocked, starsFor, type EnemySpec, type StagePlan } from './campaign';
+import { KITS, MOVES, MOVE_HINT, MOVE_NAMES, ROAR, advancePhase, chooseAttack, newBossState, phaseTitle, tempoFor, type BossState, type MoveKind } from './bosses';
 import { REGIONS } from './regions';
 
 /* ---------- battle state ---------- */
@@ -48,6 +49,20 @@ export interface Enemy {
   ticked?: boolean;
   st: StatusState;
   dotAcc: number; dotT: number;
+  /** Place in its group (0-2) and the group's size, which set where it stands. */
+  slot: number; group: number;
+  /** Length of the wind-up in progress (normal attacks use windup; boss moves their own). */
+  wlen: number;
+  /** Boss phases and signature moves, for wardens, rulers and guardians. */
+  kit?: BossState;
+  /** The signature move being wound up, if any. */
+  move?: MoveKind | null;
+  /** Barrage strikes still to come. */
+  hitsLeft?: number;
+  /** Damage taken while charging a smash; enough of it breaks the charge. */
+  breakDmg?: number;
+  /** Seconds left in a phase-change roar. */
+  roar?: number;
 }
 type ParticleKind = 'spark' | 'ember' | 'drop' | 'leaf' | 'shard' | 'dust' | 'mote';
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; r: number; kind: ParticleKind; rot: number; vr: number }
@@ -61,7 +76,12 @@ export interface Battle {
   stage: number;
   /** 1-3; wave 3 is the boss. */
   wave: number;
+  /** The enemy your attacks go to (the target). */
   enemy: Enemy | null;
+  /** Every enemy in the current wave, the target included. */
+  foes: Enemy[];
+  /** Boss moves already explained in this fight, so each hint shows once. */
+  hinted: string[];
   /** Attack cooldown, swap cooldown, parry window and parry cooldown, in seconds. */
   cd: number; swapCd: number; parry: number; parryCd: number;
   /** An input made near the end of a cooldown, fired when it ends. */
@@ -114,27 +134,30 @@ const fieldCv=$<HTMLCanvasElement>('#fieldCan'), field=$('#field');
 /** The beast currently fighting, if any. */
 export const cur=(): Unit|undefined=>B?B.team[B.active]:undefined;
 
-/** Build an enemy from a campaign stage's plan. */
-function makeEnemyFrom(e: EnemySpec): Enemy{
+/** Health and attack per enemy when several fight at once, so a group isn't triple the threat. */
+const GROUP_HP=[1,1,0.62,0.48], GROUP_ATK=[1,1,0.78,0.66];
+/** Build an enemy from a campaign stage's plan; slot and group say where it stands in its wave. */
+function makeEnemyFrom(e: EnemySpec, slot=0, group=1): Enemy{
   const sp=SPECIES[e.key], k=(1+0.1*(e.lvl-1))*(1+0.35*e.evo);
-  const hpM=e.boss?2.8:e.leader?2.1:0.9, atkM=e.boss?1.2:e.leader?1.1:0.8;
-  const maxHp=Math.round(sp.hp*k*hpM);
-  return {key:e.key,sp,evo:e.evo,name:FORMS[e.key][e.evo],lvl:e.lvl,boss:e.leader||e.boss,ruler:e.boss,hp:maxHp,maxHp,atk:sp.atk*k*atkM,state:'idle' as const,st:{},dotAcc:0,dotT:0,timer:rand(1.5,2.1),windup:e.boss?1.0:e.leader?0.95:0.85,
-    flash:0,lunge:0,dead:false,fade:1,spawn:0};
+  const warden=e.tier==='warden';
+  const hpM=(e.boss?3.0:warden?2.5:e.leader?2.1:0.9)*GROUP_HP[group], atkM=(e.boss?1.2:warden?1.15:e.leader?1.1:0.8)*GROUP_ATK[group];
+  const maxHp=Math.round(sp.hp*k*hpM), windup=e.boss?1.0:warden||e.leader?0.95:0.85;
+  return {key:e.key,sp,evo:e.evo,name:FORMS[e.key][e.evo],lvl:e.lvl,boss:e.leader||e.boss||warden,ruler:e.boss,hp:maxHp,maxHp,atk:sp.atk*k*atkM,state:'idle' as const,st:{},dotAcc:0,dotT:0,
+    timer:rand(1.5,2.1)+slot*0.9,windup,wlen:windup,flash:0,lunge:0,dead:false,fade:1,spawn:0,slot,group,kit:e.tier?newBossState(e.tier):undefined};
 }
 /** A Thorn beast: Cindermaw (Pyre) is strong against it and Tidecoil (Tide) is weak, for the matchup lesson. */
 function makeTrainingEnemy(): Enemy{
   // Enough HP that the lessons leave it standing; it can't be finished before the last lesson anyway.
   const key='thistlekit', sp=SPECIES[key], maxHp=Math.round(sp.hp*3.6);
-  return {key,sp,evo:0,name:sp.name,lvl:3,boss:false,hp:maxHp,maxHp,atk:5,state:'idle',st:{},dotAcc:0,dotT:0,timer:2,windup:1.6,
-    flash:0,lunge:0,dead:false,fade:1,spawn:0};
+  return {key,sp,evo:0,name:sp.name,lvl:3,boss:false,hp:maxHp,maxHp,atk:5,state:'idle',st:{},dotAcc:0,dotT:0,timer:2,windup:1.6,wlen:1.6,
+    flash:0,lunge:0,dead:false,fade:1,spawn:0,slot:0,group:1};
 }
 export function startBattle(opts: {training?: boolean; plan?: StagePlan}={}){
   if(!opts.training&&!opts.plan) return;
   const cards=opts.training?TRAINING_TEAM:teamMembers();
   const team=cards.map(m=>{const st=statsOf(m);return {m,sp:SPECIES[m.sp],name:nameOf(m),evo:m.evo||0,skill:m.skill||1,hp:st.maxHp,maxHp:st.maxHp,atk:st.atk,energy:0,dead:false,fade:1,flash:0,st:{},dotAcc:0,dotT:0}});
   if(!team.length) return;
-  const b: Battle={team,active:0,stage:opts.plan?opts.plan.difficulty:0,plan:opts.plan,training:opts.training?{enemyActs:false,protectEnemy:true,demo:null}:undefined,wave:0,enemy:null,cd:0,swapCd:0,parry:0,parryCd:0,buffered:null,fx:[],hitstop:0,flash:0,flashCol:'#FFFFFF',lunge:0,pSpawn:1,
+  const b: Battle={team,active:0,stage:opts.plan?opts.plan.difficulty:0,plan:opts.plan,training:opts.training?{enemyActs:false,protectEnemy:true,demo:null}:undefined,wave:0,enemy:null,foes:[],hinted:[],cd:0,swapCd:0,parry:0,parryCd:0,buffered:null,fx:[],hitstop:0,flash:0,flashCol:'#FFFFFF',lunge:0,pSpawn:1,
     parts:[],texts:[],trail:[],shake:0,time:0,over:false,earned:0,gold:0,drops:[],timers:[],
     embers:Array.from({length:26},()=>({x:Math.random(),y:Math.random(),v:rand(0.02,0.06),r:rand(0.8,2.2),ph:Math.random()*6}))};
   B=b;
@@ -147,17 +170,45 @@ export function startBattle(opts: {training?: boolean; plan?: StagePlan}={}){
 }
 export function nextWave(){const bt=B; if(!bt) return;
   bt.wave++;
-  const e=bt.training||!bt.plan?makeTrainingEnemy():makeEnemyFrom(bt.plan.waves[bt.wave-1]); bt.enemy=e;
-  if(bt.training||!bt.plan) banner('Training','Learn to fight');
-  else if(e.ruler) banner(e.name, bt.plan.kind==='gate'?'Guardian of the Gate':`Ruler of ${REGIONS[bt.plan.region].name}`);
-  else if(e.boss) banner('Leader', e.name);
-  else banner(`Wave ${bt.wave}`, bt.plan.name);
+  if(bt.training||!bt.plan){bt.foes=[makeTrainingEnemy()]; bt.enemy=bt.foes[0]; banner('Training','Learn to fight'); return}
+  const specs=bt.plan.waves[bt.wave-1], n=specs.length;
+  bt.foes=specs.map((sp,i)=>makeEnemyFrom(sp,i,n));
+  // Aim at the leader or boss first if there is one, else the nearest.
+  bt.enemy=bt.foes.find(f=>f.boss)??bt.foes[0];
+  const e=bt.enemy, plan=bt.plan, more=n>1?` and ${n-1} more`:'';
+  if(e.kit?.tier==='guardian') banner(e.name,'Guardian of the Gate');
+  else if(e.kit?.tier==='ruler') banner(e.name,`Ruler of ${REGIONS[plan.region].name}`);
+  else if(e.kit?.tier==='warden') banner(e.name, e.sp.el===plan.el?`Warden of ${REGIONS[plan.region].name}`:'A wandering warden');
+  else if(e.boss) banner('Leader', e.name+more);
+  else banner(`Wave ${bt.wave}`, n>1?`${n} at once`:plan.name);
+  if(n>1&&!bt.hinted.includes('target')){bt.hinted.push('target'); bt.timers.push({t:1.4,fn:()=>{const g=geo(); ftext(g.w/2,g.h*0.56,'Tap an enemy to target it','#F0E8F5',19,2.4)}})}
 }
 export function banner(txt: string,sub?: string){SFX.play('banner');const b=$('#banner'); b.innerHTML=`${txt}<small>${sub||''}</small>`; b.classList.remove('go'); void b.offsetWidth; b.classList.add('go');}
 
+/** Where enemies stand, as shares of the field, for groups of one, two and three. */
+const LAYOUT: [number,number][][]=[[],[[0.66,0.33]],[[0.52,0.31],[0.81,0.37]],[[0.45,0.34],[0.67,0.24],[0.87,0.37]]];
+/** Enemies in a group are drawn smaller so they fit. */
+const GROUP_SCALE=[1,1,0.84,0.74];
+/** Where an enemy stands, and its drawing scale. */
+export function posOf(e: Enemy){
+  const w=field.clientWidth,h=field.clientHeight, at=(LAYOUT[e.group]??LAYOUT[1])[e.slot]??LAYOUT[1][0];
+  return {x:w*at[0],y:h*at[1],k:GROUP_SCALE[e.group]??1};
+}
+/** Field size, beast size, the target's spot (E) and your beast's spot (P). */
 export function geo(){
   const w=field.clientWidth,h=field.clientHeight, s=Math.min(w*0.19,h*0.15);
-  return {w,h,s,E:{x:w*0.66,y:h*0.33},P:{x:w*0.34,y:h*0.7}};
+  const t=B?.enemy, E=t?posOf(t):{x:w*0.66,y:h*0.33};
+  return {w,h,s,E:{x:E.x,y:E.y},P:{x:w*0.34,y:h*0.7}};
+}
+/** Living enemies in this wave. */
+const alive=()=>B?B.foes.filter(f=>!f.dead):[];
+/** Aim at another enemy. */
+export function setTarget(e: Enemy){const bt=B; if(!bt||e.dead||bt.enemy===e) return; bt.enemy=e; SFX.play('ui'); buzz(6); emit('target')}
+/** The enemy under a point on the field, if any. */
+function foeAt(x: number,y: number): Enemy|undefined{
+  const s=geo().s; let best: Enemy|undefined, bd=Infinity;
+  alive().forEach(f=>{const p=posOf(f), d=Math.hypot(x-p.x,y-(p.y-s*0.2*p.k)); if(d<s*1.05*p.k&&d<bd){bd=d;best=f}});
+  return best;
 }
 /** Number of claw marks each body type leaves when slashing. */
 const CLAWS: Record<string, number>={brute:3,wisp:2,serpent:1,avian:2,golem:1};
@@ -178,6 +229,7 @@ export function slashFx(x: number,y: number,ang: number,color: string,body: stri
 
 export function playerAct(kind: ActKind,ang?: number){const bt=B; if(!bt) return;
   if(!bt||bt.over) return;
+  if(bt.enemy?.dead){const nx=alive()[0]; if(nx) bt.enemy=nx}
   const u=cur(), e=bt.enemy;
   if(!u||u.dead||!e||e.dead||e.spawn<1||bt.pSpawn<1) return;
   if(u.st.freeze){ if(Math.random()<0.3){const g0=geo(); ftext(g0.P.x,g0.P.y-g0.s*1.4,'Frozen!','#BFEFFF',16,0.6)} return; }
@@ -205,16 +257,16 @@ export function playerAct(kind: ActKind,ang?: number){const bt=B; if(!bt) return
     for(let i=-2;i<=2;i++) elemBurst(g.E.x+dx*i*g.s*0.45,g.E.y-g.s*0.1+dy*i*g.s*0.45,u.sp.el,3,200,0.2);
     bt.hitstop=0.07;
   }
-  hitEnemy(dmg,em,kind);
-  if(kind==='slash'&&Math.random()<STATUS.hitChance.player) inflictOnEnemy(u,false);
+  hitEnemy(dmg,em,kind,e);
+  if(kind==='slash'&&Math.random()<STATUS.hitChance.player) inflictOnEnemy(u,false,e);
   emit(kind);
 }
 
 /* ---------- status effects in battle ---------- */
 /** The active beast's element lands its effect on the enemy. */
-function inflictOnEnemy(u: Unit, special: boolean){const bt=B; if(!bt) return;
-  const e=bt.enemy; if(!e||e.dead) return;
-  const g=geo(), el=u.sp.el, col=ELEM[el].color;
+function inflictOnEnemy(u: Unit, special: boolean, e: Enemy|null=B?.enemy??null){const bt=B; if(!bt) return;
+  if(!e||e.dead) return;
+  const g=geo(), E=posOf(e), el=u.sp.el, col=ELEM[el].color;
   const r=applyStatus(e.st,el,u.atk,special,true);
   if(el==='radiant'){
     // Bless heals the player's side and clears their ailments.
@@ -224,13 +276,10 @@ function inflictOnEnemy(u: Unit, special: boolean){const bt=B; if(!bt) return;
     elemBurst(g.P.x,g.P.y,'radiant',16,220,0.8);
     return;
   }
-  if(r.label) ftext(g.E.x,g.E.y-g.s*1.6,r.label,col,17,1.1);
-  if(r.bonusDamage) damageEnemy(r.bonusDamage,col);
+  if(r.label) ftext(E.x,E.y-g.s*1.6*E.k,r.label,col,17,1.1);
+  if(r.bonusDamage) damageEnemy(e,r.bonusDamage,col);
   if(e.dead) return;
-  if(e.state==='windup'&&(r.froze||(r.interruptChance&&Math.random()<r.interruptChance))){
-    e.state='idle'; e.timer=rand(1.4,2.0);
-    if(!r.froze) ftext(g.E.x,g.E.y-g.s*1.95,'Stunned!','#FFF6B0',17,1);
-  }
+  if(e.state==='windup'&&(r.froze||(r.interruptChance&&Math.random()<r.interruptChance))) interruptEnemy(e,r.froze?'frozen':'stunned');
 }
 /** The enemy's element lands its effect on the player's active beast. */
 function inflictOnPlayer(e: Enemy, u: Unit){const bt=B; if(!bt) return;
@@ -238,7 +287,7 @@ function inflictOnPlayer(e: Enemy, u: Unit){const bt=B; if(!bt) return;
   const r=applyStatus(u.st,el,e.atk,false,false);
   if(el==='radiant'){
     e.hp=Math.min(e.maxHp,e.hp+Math.round(e.maxHp*r.heal)); cleanse(e.st);
-    ftext(g.E.x,g.E.y-g.s*1.6,'Blessed','#FFE08A',17,1);
+    const E=posOf(e); ftext(E.x,E.y-g.s*1.6*E.k,'Blessed','#FFE08A',17,1);
     return;
   }
   if(r.label) ftext(g.P.x,g.P.y-g.s*1.45,r.label,col,17,1.1);
@@ -246,12 +295,36 @@ function inflictOnPlayer(e: Enemy, u: Unit){const bt=B; if(!bt) return;
   if(r.interruptChance){u.energy=Math.max(0,u.energy-25); bt.parry=0}
 }
 /** Damage from effects (burns, shocks), shown as a smaller colored number. */
-function damageEnemy(amount: number, color: string){const bt=B; if(!bt) return;
-  const e=bt.enemy; if(!e||e.dead) return;
-  const g=geo(), n=Math.max(1,Math.round(amount));
-  e.hp-=n; ftext(g.E.x+rand(-g.s*0.5,g.s*0.5),g.E.y-g.s*0.2,String(n),color,17,0.8);
+function damageEnemy(e: Enemy, amount: number, color: string){const bt=B; if(!bt) return;
+  if(!e||e.dead) return;
+  const g=geo(), E=posOf(e), n=Math.max(1,Math.round(amount));
+  e.hp-=n; ftext(E.x+rand(-g.s*0.5,g.s*0.5),E.y-g.s*0.2,String(n),color,17,0.8);
   if(bt.training?.protectEnemy) e.hp=Math.max(1,e.hp);
-  if(e.hp<=0) enemyDefeated();
+  if(e.hp<=0) enemyDefeated(e); else checkPhase(e);
+}
+/** A wind-up was cut short: by a Special, a stun or freeze, or by breaking a smash. */
+function interruptEnemy(e: Enemy, why: 'special'|'stunned'|'frozen'|'break'){const bt=B; if(!bt) return;
+  const g=geo(), E=posOf(e), smash=e.move==='smash';
+  e.state='idle'; e.move=null; e.hitsLeft=0; e.breakDmg=0; e.timer=rand(1.6,2.2);
+  if(smash||why==='break'){
+    // Breaking a boss's big charge leaves it reeling.
+    e.timer=2.8; e.kb=1;
+    ftext(E.x,E.y-g.s*1.9*E.k,'Broken!','#FFE3A0',32,1.4);
+    bt.flash=Math.max(bt.flash,0.45); bt.flashCol='#FFE3A0'; shake(0.8); SFX.play('parry'); buzz([20,30,40]);
+    burst(E.x,E.y,'#FFE3A0',40,420);
+  } else if(why==='special') ftext(E.x,E.y-g.s*1.6*E.k,'Staggered!','#F0E8F5',20,1);
+  else if(why==='stunned') ftext(E.x,E.y-g.s*1.95*E.k,'Stunned!','#FFF6B0',17,1);
+}
+/** A boss whose health fell past a threshold starts its next phase. */
+function checkPhase(e: Enemy){const bt=B; if(!bt||!e.kit||e.dead) return;
+  if(!advancePhase(e.kit,e.hp/e.maxHp)) return;
+  const g=geo(), E=posOf(e), col=ELEM[e.sp.el].color;
+  e.state='idle'; e.move=null; e.hitsLeft=0; e.breakDmg=0; e.roar=ROAR; e.timer=0.3; e.kb=0; cleanse(e.st);
+  banner(e.name,phaseTitle(e.kit));
+  bt.flash=Math.max(bt.flash,0.5); bt.flashCol=col; shake(1); SFX.play('boom'); buzz([40,30,80]);
+  elemBurst(E.x,E.y,e.sp.el,60,460,0.6);
+  ftext(E.x,E.y-g.s*1.9*E.k,'Shakes off its ailments','#F0E8F5',15,1.4);
+  emit('phase',e.kit.phase);
 }
 function damageUnit(u: Unit, amount: number, color: string){const bt=B; if(!bt) return;
   if(u.dead) return;
@@ -264,9 +337,9 @@ function damageUnit(u: Unit, amount: number, color: string){const bt=B; if(!bt) 
 export function castSpecial(u: Unit,e: Enemy,dmg: number,em: number){const bt=B; if(!bt) return;
   const g=geo(), s=g.s, el=u.sp.el, col=ELEM[el].color;
   ftext(g.w/2,g.h*0.52,u.sp.special,col,28,1.4);
-  if(e.state==='windup'){e.state='idle';e.timer=rand(1.6,2.2);ftext(g.E.x,g.E.y-s*1.6,'Staggered!','#F0E8F5',20,1)}
+  if(e.state==='windup') interruptEnemy(e,'special');
   fx({type:'charge',x:g.P.x,y:g.P.y,r:s*1.8,color:col,dur:0.28}); SFX.play('charge'); buzz(20);
-  const land=()=>{ if(!bt||bt.enemy!==e||e.dead) return; bt.flash=0.55; bt.flashCol=col; bt.hitstop=0.14; shake(1); SFX.play('hit'); buzz(70); hitEnemy(dmg,em,'special'); inflictOnEnemy(u,true); emit('special'); };
+  const land=()=>{ if(!bt||!bt.foes.includes(e)||e.dead) return; bt.flash=0.55; bt.flashCol=col; bt.hitstop=0.14; shake(1); SFX.play('hit'); buzz(70); hitEnemy(dmg,em,'special',e); inflictOnEnemy(u,true,e); emit('special'); };
   if(el==='pyre'){
     bt.timers.push({t:0.28,fn:()=>{ bt.lunge=1; SFX.play('fireball');
       fx({type:'fireball',x0:g.P.x+s*0.5,y0:g.P.y-s*0.4,x1:g.E.x,y1:g.E.y,r:s*0.4,dur:0.42,end:()=>{
@@ -304,45 +377,51 @@ export function castSpecial(u: Unit,e: Enemy,dmg: number,em: number){const bt=B;
     bt.timers.push({t:0.94,fn:()=>{ if(!bt) return; elemBurst(g.E.x,g.E.y,'umbral',50,420,0.2); land(); }});
   }
 }
-export function hitEnemy(dmg: number,em: number,kind: ActKind){const bt=B; if(!bt) return;
-  const e=bt.enemy,g=geo(),u=cur(); if(!e||e.dead) return;
-  const el=u?u.sp.el:'pyre';
+export function hitEnemy(dmg: number,em: number,kind: ActKind,e: Enemy|null=B?.enemy??null){const bt=B; if(!bt) return;
+  const g=geo(),u=cur(); if(!e||e.dead) return;
+  const E=posOf(e), el=u?u.sp.el:'pyre';
   e.hp-=dmg; e.flash=1; e.kb=kind==='tap'?0.45:1;
-  elemBurst(g.E.x+rand(-10,10),g.E.y+rand(-10,10),el,kind==='tap'?5:10,kind==='tap'?160:260);
-  ftext(g.E.x+rand(-g.s*0.6,g.s*0.6),g.E.y-g.s*0.5,String(dmg),em>1?'#FFD98A':(em<1?'#B7A9C6':'#FFFFFF'),kind==='special'?36:(kind==='slash'?26:20));
-  if(em>1&&kind!=='tap') ftext(g.E.x,g.E.y-g.s*1.25,'Super effective','#E7BE6E',16,1);
-  if(em<1&&kind!=='tap') ftext(g.E.x,g.E.y-g.s*1.25,'Resisted','#A898B9',15,0.9);
+  elemBurst(E.x+rand(-10,10),E.y+rand(-10,10),el,kind==='tap'?5:10,kind==='tap'?160:260);
+  ftext(E.x+rand(-g.s*0.6,g.s*0.6),E.y-g.s*0.5,String(dmg),em>1?'#FFD98A':(em<1?'#B7A9C6':'#FFFFFF'),kind==='special'?36:(kind==='slash'?26:20));
+  if(em>1&&kind!=='tap') ftext(E.x,E.y-g.s*1.25*E.k,'Super effective','#E7BE6E',16,1);
+  if(em<1&&kind!=='tap') ftext(E.x,E.y-g.s*1.25*E.k,'Resisted','#A898B9',15,0.9);
+  // Hitting a charging boss hard enough breaks the charge.
+  if(e.move==='smash'&&e.state==='windup'&&e.hp>0){e.breakDmg=(e.breakDmg||0)+dmg; if(e.breakDmg>=e.maxHp*MOVES.smash.breakShare) interruptEnemy(e,'break')}
   shake(kind==='tap'?0.15:0.4);
   const drain=drainFrom(e.st);
   if(drain&&u&&!u.dead){const h=Math.round(dmg*drain); u.hp=Math.min(u.maxHp,u.hp+h); ftext(g.P.x,g.P.y-g.s*1.2,`+${h}`,'#B58BF0',16,0.8)}
   if(bt.training?.protectEnemy) e.hp=Math.max(1,e.hp);
-  if(e.hp<=0) enemyDefeated();
+  if(e.hp<=0) enemyDefeated(e); else checkPhase(e);
 }
-/** The enemy's health reached zero: rewards, drops, and the next wave. */
-function enemyDefeated(){const bt=B; if(!bt) return;
-  const e=bt.enemy,g=geo(); if(!e||e.dead) return;
-  {
-    e.hp=0; e.dead=true; e.state='dead'; cleanse(e.st);
-    fx({type:'explosion',x:g.E.x,y:g.E.y,r:g.s*2.6,color:ELEM[e.sp.el].color,dur:0.8});
-    elemBurst(g.E.x,g.E.y,e.sp.el,70,420,0.4); shake(0.9); SFX.play('kill'); buzz([30,40,90]);
-    bt.hitstop=Math.max(bt.hitstop,0.18); bt.flash=Math.max(bt.flash,0.4); bt.flashCol='#FFF4DC';
-    if(bt.training){bt.timers.push({t:1.3,fn:trainingComplete}); return}
-    const big=e.ruler?1.5:1;
-    const reward=Math.round((e.boss?60+10*bt.stage:20+5*bt.stage)*big); bt.earned+=reward;
-    const gold=Math.round((e.boss?120+30*bt.stage:40+10*bt.stage)*big); bt.gold+=gold;
-    ftext(g.E.x,g.E.y,`+${reward} shards · +${gold} gold`,'#E7BE6E',18,1.4);
-    const dropChance=(e.boss?0.3:0.35)*(bt.plan?.kind==='side'?2:1);
-    if(Math.random()<dropChance&&save.roster.length+bt.drops.length<BOX){bt.drops.push(e.key); ftext(g.E.x,g.E.y+26,`${e.sp.name} card dropped!`,'#F0E8F5',17,1.6)}
-    bt.timers.push({t:1.3,fn:()=>{if(bt.wave<3) nextWave(); else victory();}});
-  }
+/** An enemy's health reached zero: rewards, drops, a new target, and the next wave once all are down. */
+function enemyDefeated(e: Enemy){const bt=B; if(!bt) return;
+  if(!e||e.dead) return;
+  const g=geo(), E=posOf(e);
+  e.hp=0; e.dead=true; e.state='dead'; e.move=null; cleanse(e.st);
+  fx({type:'explosion',x:E.x,y:E.y,r:g.s*2.6*E.k,color:ELEM[e.sp.el].color,dur:0.8});
+  elemBurst(E.x,E.y,e.sp.el,70,420,0.4); shake(0.9); SFX.play('kill'); buzz([30,40,90]);
+  bt.hitstop=Math.max(bt.hitstop,0.18); bt.flash=Math.max(bt.flash,0.4); bt.flashCol='#FFF4DC';
+  if(bt.training){bt.timers.push({t:1.3,fn:trainingComplete}); return}
+  const big=e.ruler?1.5:e.kit?1.3:1, share=1/Math.max(1,e.group*0.7);
+  const reward=Math.round((e.boss?60+10*bt.stage:20+5*bt.stage)*big*share); bt.earned+=reward;
+  const gold=Math.round((e.boss?120+30*bt.stage:40+10*bt.stage)*big*share); bt.gold+=gold;
+  ftext(E.x,E.y,`+${reward} shards · +${gold} gold`,'#E7BE6E',18,1.4);
+  const dropChance=(e.boss?0.3:0.35)*(bt.plan?.kind==='side'?2:1)/Math.max(1,e.group-0.5);
+  if(collectible(e.key)&&Math.random()<dropChance&&save.roster.length+bt.drops.length<BOX){bt.drops.push(e.key); ftext(E.x,E.y+26,`${e.sp.name} card dropped!`,'#F0E8F5',17,1.6)}
+  const left=alive();
+  if(bt.enemy===e&&left.length) bt.enemy=left.find(f=>f.boss)??left[0];
+  if(!left.length) bt.timers.push({t:1.3,fn:()=>{if(bt.wave<3) nextWave(); else victory();}});
 }
-export function enemyStrike(){const bt=B; if(!bt) return;
-  const e=bt.enemy,u=cur(),g=geo();
-  if(!e) return;
+/** An enemy's attack lands. mult scales the damage; all hits every beast on the team; unblockable ignores parries. */
+export function enemyStrike(e: Enemy|null=B?.enemy??null, o: {mult?: number; all?: boolean; unblockable?: boolean}={}){const bt=B; if(!bt) return;
+  const u=cur(),g0=geo();
+  if(!e||e.dead) return;
   e.lunge=1;
   if(!u||u.dead||bt.pSpawn<1) return;
-  const em=elemMult(e.sp.el,u.sp.el);
-  if(bt.parry>0){
+  const E=posOf(e), g={...g0,E:{x:E.x,y:E.y}};
+  const em=elemMult(e.sp.el,u.sp.el), mult=o.mult??1;
+  if(bt.parry>0&&o.unblockable) ftext(g.P.x,g.P.y-g.s*1.75,'Can’t parry!','#FF8A8A',22,1.1);
+  if(bt.parry>0&&!o.unblockable){
     const hx=g.P.x+g.s*0.7, hy=g.P.y-g.s*0.35;
     ftext(g.P.x,g.P.y-g.s*1.4,'Parried!','#E7BE6E',26,1.2);
     fx({type:'impact',x:hx,y:hy,r:g.s*1.1,color:'#E7BE6E',rot:Math.random(),dur:0.35});
@@ -350,14 +429,18 @@ export function enemyStrike(){const bt=B; if(!bt) return;
     bt.hitstop=0.12; bt.flash=0.35; bt.flashCol='#E7BE6E'; e.kb=1; shake(0.5);
     u.energy=Math.min(100,u.energy+22);
     const cdmg=Math.max(1,Math.round(u.atk*0.8*elemMult(u.sp.el,e.sp.el)));
-    bt.timers.push({t:0.12,fn:()=>{const e2=bt.enemy,u2=cur(); if(e2&&!e2.dead&&u2&&!u2.dead){bt.lunge=1; slashFx(g.E.x,g.E.y-g.s*0.1,rand(-0.6,0.6),ELEM[u2.sp.el].color,u2.sp.body,g.s); hitEnemy(cdmg,1,'slash')}}});
+    // The counter goes back at whoever attacked, even if you were aiming elsewhere.
+    bt.timers.push({t:0.12,fn:()=>{const u2=cur(); if(!e.dead&&u2&&!u2.dead){bt.lunge=1; slashFx(g.E.x,g.E.y-g.s*0.1,rand(-0.6,0.6),ELEM[u2.sp.el].color,u2.sp.body,g.s*E.k); hitEnemy(cdmg,1,'slash',e)}}});
     emit('parry');
     return;
   }
   if(rollDazeMiss(e.st)){ftext(g.P.x,g.P.y-g.s*1.2,'Miss!','#9FDCC0',22,0.9); SFX.play('guard'); return}
   u.energy=Math.min(100,u.energy+6);
-  const dmg=Math.max(1,Math.round(e.atk*em*rand(0.9,1.1)*damageDealtMult(e.st)*damageTakenMult(u.st)));
-  u.hp-=dmg; u.flash=1; u.kb=1; shake(0.6); bt.hitstop=0.05; SFX.play('hurt'); buzz(45);
+  const dmg=Math.max(1,Math.round(e.atk*mult*em*rand(0.9,1.1)*damageDealtMult(e.st)*damageTakenMult(u.st)));
+  u.hp-=dmg; u.flash=1; u.kb=1; shake(mult>1.5?1.1:0.6); bt.hitstop=mult>1.5?0.12:0.05; SFX.play('hurt'); if(mult>1.5) SFX.play('boom'); buzz(mult>1.5?[60,30,90]:45);
+  if(o.all) bt.team.forEach(x=>{ if(x===u||x.dead) return;
+    const d2=Math.max(1,Math.round(e.atk*mult*elemMult(e.sp.el,x.sp.el)*rand(0.9,1.1)*damageDealtMult(e.st)*damageTakenMult(x.st)));
+    x.flash=1; damageUnit(x,d2,'#FF8A8A'); });
   if(bt.training) u.hp=Math.max(1,u.hp);
   emit('hurt');
   const drain=drainFrom(u.st);
@@ -366,7 +449,7 @@ export function enemyStrike(){const bt=B; if(!bt) return;
   slashFx(g.P.x,g.P.y-g.s*0.1,toP+Math.PI/2+rand(-0.4,0.4),ELEM[e.sp.el].color,e.sp.body,g.s*0.9,0.36);
   elemBurst(g.P.x,g.P.y,e.sp.el,14,260);
   ftext(g.P.x+rand(-20,20),g.P.y-g.s*0.6,String(dmg),'#FF8A8A',24);
-  if(u.hp>0&&Math.random()<(e.boss?STATUS.hitChance.boss:STATUS.hitChance.enemy)) inflictOnPlayer(e,u);
+  if(u.hp>0&&Math.random()<(e.boss||mult>1.5?STATUS.hitChance.boss:STATUS.hitChance.enemy)) inflictOnPlayer(e,u);
   if(u.hp<=0) unitDown(u);
 }
 /** One of the player's beasts was knocked out: switch to the next, or lose. */
@@ -458,6 +541,37 @@ retreatBtn.addEventListener('click',()=>{
   setTimeout(()=>{if(Date.now()-retreatArm>=2400)retreatBtn.textContent=training?'Skip tutorial':'Retreat'},2500);
 });
 
+/** An enemy begins an attack: an ordinary hit, or for bosses sometimes a signature move. */
+function startWindup(e: Enemy){const bt=B; if(!bt) return;
+  const act=e.kit?chooseAttack(e.kit,Math.random):'normal';
+  const tp=e.kit?tempoFor(e.kit):{windup:1,rest:1};
+  e.move=act==='normal'?null:act;
+  e.wlen=(e.move?MOVES[e.move].windup:e.windup)*tp.windup;
+  e.state='windup'; e.timer=e.wlen; e.ticked=false; e.breakDmg=0;
+  if(e.move==='barrage') e.hitsLeft=MOVES.barrage.hits;
+  SFX.play('warn');
+  if(e.move){
+    const g=geo();
+    ftext(g.w/2,g.h*0.14,MOVE_NAMES[e.sp.el][e.move],ELEM[e.sp.el].color,26,Math.min(2.2,e.wlen+0.6));
+    if(!bt.hinted.includes(e.move)){bt.hinted.push(e.move); ftext(g.w/2,g.h*0.14+30,MOVE_HINT[e.move],'#F0E8F5',Math.min(16,g.w/24),Math.max(2.4,e.wlen+0.8))}
+    if(e.move==='smash') SFX.play('charge');
+    emit('bossMove',e.move);
+  }
+}
+/** The wind-up ends and the attack lands; a barrage keeps going until its strikes run out. */
+function resolveAttack(e: Enemy){const bt=B; if(!bt) return;
+  const m=e.move;
+  if(m==='sweep') enemyStrike(e,{mult:MOVES.sweep.mult,all:true});
+  else if(m==='smash') enemyStrike(e,{mult:MOVES.smash.mult,unblockable:true});
+  else if(m==='barrage') enemyStrike(e,{mult:MOVES.barrage.mult});
+  else enemyStrike(e);
+  if(!B||e.dead) return;
+  if(m==='barrage'&&(e.hitsLeft=(e.hitsLeft||1)-1)>0&&e.state==='windup'){e.wlen=MOVES.barrage.gap; e.timer=e.wlen; e.ticked=false; return}
+  const tp=e.kit?tempoFor(e.kit):{windup:1,rest:1};
+  e.state='idle'; e.move=null;
+  e.timer=rand(1.7,2.7)/e.sp.spd*(e.boss?0.85:1)*tp.rest*(1+0.35*(e.group-1));
+}
+
 /** Gravity per particle kind (negative rises). */
 const GRAV: Record<ParticleKind, number>={spark:380,ember:-90,drop:760,leaf:120,shard:420,dust:650,mote:-50};
 export function updateBattle(dt){const bt=B; if(!bt) return;
@@ -479,15 +593,16 @@ export function updateBattle(dt){const bt=B; if(!bt) return;
     u.dotAcc+=tickStatus(u.st,dt); u.dotT-=dt;
     if(u.dotT<=0){u.dotT=0.5; if(u.dotAcc>=1){const n=Math.floor(u.dotAcc); u.dotAcc-=n; damageUnit(u,n,u.st.poison?'#A7D46F':'#FF8A3D')}}
   });
-  if(bt.enemy&&!bt.enemy.dead){
-    const e=bt.enemy;
+  bt.foes.forEach(e=>{
+    if(e.dead) return;
     e.dotAcc+=tickStatus(e.st,dt); e.dotT-=dt;
-    if(e.dotT<=0){e.dotT=0.5; if(e.dotAcc>=1){const n=Math.floor(e.dotAcc); e.dotAcc-=n; damageEnemy(n,e.st.poison?'#A7D46F':'#FF8A3D')}}
-  }
+    if(e.dotT<=0){e.dotT=0.5; if(e.dotAcc>=1){const n=Math.floor(e.dotAcc); e.dotAcc-=n; damageEnemy(e,n,e.st.poison?'#A7D46F':'#FF8A3D')}}
+  });
+  if(!B) return;
   // Ambient particles so ailments are visible on the field.
   if(Math.random()<dt*6){
     const pairs: [StatusState,number,number][]=[];
-    if(bt.enemy&&!bt.enemy.dead) pairs.push([bt.enemy.st,g.E.x,g.E.y]);
+    bt.foes.forEach(f=>{if(!f.dead){const p=posOf(f); pairs.push([f.st,p.x,p.y])}});
     if(au&&!au.dead) pairs.push([au.st,g.P.x,g.P.y]);
     pairs.forEach(([st,x,y])=>{
       if(st.burn) elemBurst(x+rand(-1,1)*g.s*0.5,y,'pyre',1,60,0.8);
@@ -496,19 +611,20 @@ export function updateBattle(dt){const bt=B; if(!bt) return;
       if(st.curse) elemBurst(x+rand(-1,1)*g.s*0.5,y,'umbral',1,40,0.7);
     });
   }
-  const e=bt.enemy;
-  if(e){
+  for(const e of bt.foes){
     e.flash=Math.max(0,e.flash-dt*5); e.lunge=Math.max(0,e.lunge-dt/0.25); e.kb=Math.max(0,(e.kb||0)-dt*5);
-    if(e.dead) e.fade=Math.max(0,e.fade-dt*1.4);
-    else {
-      e.spawn=Math.min(1,e.spawn+dt/0.6);
-      if(e.spawn>=1&&!bt.over&&!cur()?.dead&&(!bt.training||bt.training.enemyActs)){
-        e.timer-=dt*tempo(e.st);
-        if(e.state==='idle'&&e.timer<=0){e.state='windup';e.timer=e.windup;e.ticked=false;SFX.play('warn')}
-        else if(e.state==='windup'&&!e.ticked&&e.timer<=parryW()){e.ticked=true;SFX.play('window')}
-        else if(e.state==='windup'&&e.timer<=0){enemyStrike(); e.state='idle'; e.timer=rand(1.7,2.7)/e.sp.spd*(e.boss?0.85:1)}
-      }
+    if(e.dead){e.fade=Math.max(0,e.fade-dt*1.4); continue}
+    e.spawn=Math.min(1,e.spawn+dt/0.6);
+    if(e.spawn<1||bt.over||cur()?.dead||(bt.training&&!bt.training.enemyActs)) continue;
+    if(e.roar&&e.roar>0){e.roar-=dt; continue}
+    e.timer-=dt*tempo(e.st);
+    if(e.state==='idle'&&e.timer<=0){
+      // One attacker at a time, so every wind-up can be read and parried.
+      if(bt.foes.some(f=>f!==e&&!f.dead&&f.state==='windup')){e.timer=0.35; continue}
+      startWindup(e);
     }
+    else if(e.state==='windup'&&!e.ticked&&e.move!=='smash'&&e.timer<=parryW()){e.ticked=true;SFX.play('window')}
+    else if(e.state==='windup'&&e.timer<=0){resolveAttack(e); if(!B) return;}
   }
   const ended: Fx[]=[];
   bt.fx.forEach(f=>{
@@ -590,26 +706,53 @@ export function drawBattle(){const bt=B; if(!bt) return;
   for(let i=-6;i<=6;i++){c.beginPath(); c.moveTo(w*0.5,h*0.461); c.lineTo(w*0.5+i*w*0.3,h); c.stroke();}
   bt.embers.forEach(m=>{m.y-=m.v*0.016; if(m.y<0){m.y=1;m.x=Math.random()}
     c.fillStyle=`rgba(${A.embers},${0.25+0.25*Math.sin(t*2+m.ph)})`; ell(c,m.x*w+Math.sin(t+m.ph)*6,m.y*h,m.r,m.r); c.fill();});
-  const e=bt.enemy, u=cur();
-  const vx=g.E.x-g.P.x, vy=g.E.y-g.P.y, vd=Math.hypot(vx,vy)||1, ux=vx/vd, uy=vy/vd;
-  if(e) drawSigil(c,g.E.x,g.E.y+s*0.86,s*1.35,0.3,ELEM[e.sp.el].color,t*0.4,0.55);
-  if(u) drawSigil(c,g.P.x,g.P.y+s*0.86,s*1.35,0.3,ELEM[u.sp.el].color,-t*0.4,0.55);
-  if(e&&e.fade>0){
-    const es=e.ruler?1.35:e.boss?1.25:1;
+  const u=cur();
+  const attacker=bt.foes.find(f=>!f.dead&&f.state==='windup');
+  // A charging smash darkens the arena until it lands or breaks.
+  if(attacker?.move==='smash'){const pr=clamp(1-attacker.timer/attacker.wlen,0,1); c.fillStyle=`rgba(40,0,12,${0.35*pr*flashScale(prefs)+0.08})`; c.fillRect(-20,-20,w+40,h+40)}
+  const many=alive().length>1;
+  // Back row first, so nearer enemies overlap farther ones.
+  [...bt.foes].sort((a,b)=>posOf(a).y-posOf(b).y).forEach(e=>{
+    if(e.fade<=0) return;
+    const E=posOf(e), es=(e.ruler?1.35:e.boss?1.25:1)*E.k;
+    if(!e.dead) drawSigil(c,E.x,E.y+s*0.86*E.k,s*1.35*E.k,0.3,ELEM[e.sp.el].color,t*0.4,0.55);
+    const vx=E.x-g.P.x, vy=E.y-g.P.y, vd=Math.hypot(vx,vy)||1, ux=vx/vd, uy=vy/vd;
     const ph=e.lunge>0?Math.sin((1-e.lunge)*Math.PI):0;
     const kb=e.kb||0, kbo=Math.sin(kb*Math.PI*0.5)*s*0.4;
     const ox=-vx*0.28*ph+ux*kbo, oy=-vy*0.28*ph+uy*kbo;
     let wob=0, red=0;
-    if(e.state==='windup'){const pr=1-e.timer/e.windup; red=pr; wob=Math.sin(t*50)*s*0.03*pr}
+    if(e.state==='windup'){const pr=clamp(1-e.timer/e.wlen,0,1); red=pr; wob=Math.sin(t*50)*s*(e.move==='smash'?0.06:0.03)*pr}
+    if(e.roar&&e.roar>0) wob=Math.sin(t*70)*s*0.05;
     const sc=(e.dead?0.6+0.4*e.fade:0.6+0.4*e.spawn)*es;
-    drawMonster(c,e.key,g.E.x+ox+wob,g.E.y+oy,s,t*(e.sp.spd)+1.7,{dir:-1,evo:e.evo,flash:e.flash,red,alpha:e.dead?e.fade:e.spawn,scale:sc,sx:1+0.14*kb,sy:1-0.12*kb,glow:e.boss?rgba(ELEM[e.sp.el].color,0.7):null});
-    if(e.st.freeze&&!e.dead) drawIce(c,g.E.x+ox,g.E.y+oy,s*es,t);
-    if(e.state==='windup'&&!e.dead){
-      c.font=`800 ${Math.round(s*0.6)}px ${getComputedStyle(document.body).getPropertyValue('--display')}`; c.textAlign='center'; c.fillStyle='#FF5A64';
-      c.fillText('!',g.E.x,g.E.y-s*1.55*es);
+    const glowA=e.kit?0.55+0.15*e.kit.phase+0.15*Math.sin(t*4):0.7;
+    drawMonster(c,e.key,E.x+ox+wob,E.y+oy,s,t*(e.sp.spd)+1.7+e.slot,{dir:-1,evo:e.evo,flash:e.flash,red,alpha:e.dead?e.fade:e.spawn,scale:sc,sx:1+0.14*kb,sy:1-0.12*kb,glow:e.boss?rgba(ELEM[e.sp.el].color,glowA):null});
+    if(e.st.freeze&&!e.dead) drawIce(c,E.x+ox,E.y+oy,s*es,t);
+    if(e.dead) return;
+    const top=E.y-s*1.55*es;
+    if(many&&e===bt.enemy){
+      // Target marker: a gold chevron bobbing over its head.
+      const by=top-s*0.28+Math.sin(t*5)*3;
+      c.fillStyle='#E7BE6E'; c.strokeStyle='rgba(12,8,16,0.85)'; c.lineWidth=2;
+      c.beginPath(); c.moveTo(E.x-s*0.18,by-s*0.12); c.lineTo(E.x,by+s*0.06); c.lineTo(E.x+s*0.18,by-s*0.12); c.lineTo(E.x,by-0.02*s); c.closePath(); c.stroke(); c.fill();
     }
-  }
+    if(e.state==='windup'){
+      c.font=`800 ${Math.round(s*0.6*Math.max(0.8,E.k))}px ${getComputedStyle(document.body).getPropertyValue('--display')}`; c.textAlign='center'; c.fillStyle=e.move==='smash'?'#FF3B4E':'#FF5A64';
+      c.fillText(e.move==='smash'?'!!':'!',E.x+(many&&e===bt.enemy?s*0.35:0),top);
+    }
+    if(e.move==='smash'&&e.state==='windup'){
+      // Break meter: fills as you hit the boss during its charge.
+      const bw=s*1.5, bx=E.x-bw/2, byy=E.y+s*0.95*es, k=clamp((e.breakDmg||0)/(e.maxHp*MOVES.smash.breakShare),0,1);
+      c.fillStyle='rgba(12,8,16,0.85)'; c.fillRect(bx-2,byy-2,bw+4,10);
+      c.fillStyle='#FFE3A0'; c.fillRect(bx,byy,bw*k,6);
+      c.font=`700 11px 'Barlow Semi Condensed', sans-serif`; c.fillStyle='#FFE3A0'; c.textAlign='center'; c.fillText('BREAK',E.x,byy+18);
+    }
+    if(e.move==='barrage'&&e.state==='windup'){
+      for(let i=0;i<(e.hitsLeft||0);i++){c.fillStyle='#FF8A8A'; ell(c,E.x+(i-((e.hitsLeft||1)-1)/2)*s*0.28,E.y+s*1.0*es,s*0.08,s*0.08); c.fill();}
+    }
+  });
+  if(u) drawSigil(c,g.P.x,g.P.y+s*0.86,s*1.35,0.3,ELEM[u.sp.el].color,-t*0.4,0.55);
   if(u&&u.fade>0){
+    const vx=g.E.x-g.P.x, vy=g.E.y-g.P.y, vd=Math.hypot(vx,vy)||1, ux=vx/vd, uy=vy/vd;
     const ph=bt.lunge>0?Math.sin((1-bt.lunge)*Math.PI):0;
     const kb=u.kb||0, kbo=Math.sin(kb*Math.PI*0.5)*s*0.35;
     const ox=vx*0.3*ph-ux*kbo, oy=vy*0.3*ph-uy*kbo;
@@ -625,13 +768,27 @@ export function drawBattle(){const bt=B; if(!bt) return;
     }
     if(u.energy>=100&&!u.dead){c.strokeStyle=rgba('#E7BE6E',0.35+0.25*Math.sin(t*6));c.lineWidth=2;ell(c,g.P.x,g.P.y,s*1.15,s*1.15);c.stroke();}
   }
-  if(e&&e.state==='windup'&&!e.dead&&u&&!u.dead){
-    const pr=clamp(1-e.timer/e.windup,0,1);
-    const open=e.timer<=parryW();
-    c.lineWidth=open?3:2; c.strokeStyle=open?'rgba(231,190,110,0.95)':'rgba(231,190,110,0.5)'; c.setLineDash(open?[]:[4,6]);
-    ell(c,g.P.x,g.P.y,s*1.05,s*1.05); c.stroke(); c.setLineDash([]);
-    c.lineWidth=3+pr*2; c.strokeStyle=open?`rgba(255,214,130,${0.6+0.4*pr})`:`rgba(224,69,90,${0.35+0.6*pr})`;
-    ell(c,g.P.x,g.P.y,s*(2.5-1.45*pr),s*(2.5-1.45*pr)); c.stroke();
+  const e=attacker;
+  if(e&&u&&!u.dead){
+    const pr=clamp(1-e.timer/e.wlen,0,1);
+    if(e.move==='smash'){
+      // Unblockable: the ring never turns gold, and a cross marks it.
+      c.lineWidth=3; c.strokeStyle='rgba(255,59,78,0.6)'; c.setLineDash([4,6]); ell(c,g.P.x,g.P.y,s*1.05,s*1.05); c.stroke(); c.setLineDash([]);
+      c.lineWidth=4+pr*3; c.strokeStyle=`rgba(255,59,78,${0.45+0.55*pr})`; ell(c,g.P.x,g.P.y,s*(2.5-1.45*pr),s*(2.5-1.45*pr)); c.stroke();
+      const xr=s*0.22, xx=g.P.x+s*1.25, xy=g.P.y-s*1.1; c.lineWidth=4; c.strokeStyle='#FF3B4E';
+      c.beginPath(); c.moveTo(xx-xr,xy-xr); c.lineTo(xx+xr,xy+xr); c.moveTo(xx+xr,xy-xr); c.lineTo(xx-xr,xy+xr); c.stroke();
+    } else {
+      const open=e.timer<=parryW();
+      c.lineWidth=open?3:2; c.strokeStyle=open?'rgba(231,190,110,0.95)':'rgba(231,190,110,0.5)'; c.setLineDash(open?[]:[4,6]);
+      ell(c,g.P.x,g.P.y,s*1.05,s*1.05); c.stroke(); c.setLineDash([]);
+      c.lineWidth=3+pr*2; c.strokeStyle=open?`rgba(255,214,130,${0.6+0.4*pr})`:`rgba(224,69,90,${0.35+0.6*pr})`;
+      ell(c,g.P.x,g.P.y,s*(2.5-1.45*pr),s*(2.5-1.45*pr)); c.stroke();
+      if(e.move==='sweep'){
+        // A wide arc along the ground: this one hits the whole team.
+        c.lineWidth=3; c.strokeStyle=open?'rgba(255,214,130,0.7)':`rgba(224,69,90,${0.3+0.5*pr})`;
+        c.beginPath(); c.ellipse(g.w*0.5,g.h*0.86,g.w*0.48,g.h*0.1,0,Math.PI*1.05,Math.PI*1.95); c.stroke();
+      }
+    }
   }
   bt.fx.forEach(fo=>{const d=FXDRAW[fo.type]; if(d) d(c,fo)});
   if(bt.training?.demo&&!bt.over) drawDemo(c,g,bt.training.demo,bt.time);
@@ -662,7 +819,19 @@ export function drawBattle(){const bt=B; if(!bt) return;
   if(bt.flash>0){c.fillStyle=rgba(bt.flashCol||'#FFFFFF',Math.min(0.5,bt.flash*0.6)*flashScale(prefs)); c.fillRect(0,0,w,h);}
 }
 
-export const hud={eName:$('#eName'),eLvl:$('#eLvl'),eEl:$('#eEl'),eBoss:$('#eBoss'),eHp:$('#eHp'),eHpT:$('#eHpT'),pName:$('#pName'),pLvl:$('#pLvl'),pEl:$('#pEl'),pHp:$('#pHp'),pHpT:$('#pHpT'),pEn:$('#pEn'),eReady:$('#eReady'),pPanel:$('#pPanel'),stage:$('#bStage'),eMu:$('#eMu'),eSt:$('#eSt'),pSt:$('#pSt')};
+/** Buttons for each enemy in a group, to see their health and switch targets. */
+function renderFoes(bt: Battle){
+  const box=hud.eFoes, show=bt.foes.length>1;
+  box.hidden=!show; if(!show) return;
+  if(box.childElementCount!==bt.foes.length){
+    box.innerHTML=bt.foes.map((f,i)=>`<button class="foe" data-f="${i}"><span class="fdot" style="background:${ELEM[f.sp.el].color}"></span><span class="fname">${f.name}</span><span class="bar sm enemy"><i></i></span></button>`).join('');
+  }
+  [...box.children].forEach((b,i)=>{const f=bt.foes[i], el=b as HTMLButtonElement; if(!f) return;
+    el.classList.toggle('on',f===bt.enemy); el.classList.toggle('busy',f.state==='windup'&&!f.dead); el.disabled=f.dead;
+    el.setAttribute('aria-label',`Target ${f.name}${f.dead?', defeated':''}`); el.setAttribute('aria-pressed',String(f===bt.enemy));
+    (el.querySelector('i') as HTMLElement).style.width=(100*Math.max(0,f.hp)/f.maxHp)+'%';});
+}
+export const hud={eFoes:$('#eFoes'),ePh:$('#ePh'),eName:$('#eName'),eLvl:$('#eLvl'),eEl:$('#eEl'),eBoss:$('#eBoss'),eHp:$('#eHp'),eHpT:$('#eHpT'),pName:$('#pName'),pLvl:$('#pLvl'),pEl:$('#pEl'),pHp:$('#pHp'),pHpT:$('#pHpT'),pEn:$('#pEn'),eReady:$('#eReady'),pPanel:$('#pPanel'),stage:$('#bStage'),eMu:$('#eMu'),eSt:$('#eSt'),pSt:$('#pSt')};
 export function setText(el: HTMLElement,v: string){if(el.textContent!==v)el.textContent=v}
 /** Status chips, e.g. "Burn 3s" or "Poison x2 5s", colored by element. */
 function renderStatus(el: HTMLElement, st: StatusState){
@@ -673,8 +842,13 @@ function renderStatus(el: HTMLElement, st: StatusState){
 export function updateHud(){const bt=B; if(!bt) return;
   const e=bt.enemy,u=cur();
   setText(hud.stage,bt.training||!bt.plan?'Training':`${bt.plan.label} · Wave ${bt.wave}/3`);
-  if(e){setText(hud.eName,e.name); setText(hud.eLvl,'Lv '+e.lvl); setText(hud.eEl,ELEM[e.sp.el].name); hud.eEl.className='chip '+e.sp.el; hud.eBoss.hidden=!e.boss; setText(hud.eBoss,e.ruler?'Boss':'Leader');
-    hud.eHp.style.width=(100*e.hp/e.maxHp)+'%'; setText(hud.eHpT,`${Math.ceil(e.hp)} / ${e.maxHp}`);}
+  if(e){setText(hud.eName,e.name); setText(hud.eLvl,'Lv '+e.lvl); setText(hud.eEl,ELEM[e.sp.el].name); hud.eEl.className='chip '+e.sp.el; hud.eBoss.hidden=!e.boss;
+    setText(hud.eBoss,e.kit?(e.kit.tier==='warden'?'Warden':'Boss'):'Leader');
+    hud.eHp.style.width=(100*Math.max(0,e.hp)/e.maxHp)+'%'; setText(hud.eHpT,`${Math.max(0,Math.ceil(e.hp))} / ${e.maxHp}`);
+    // Phase marks on a boss's health bar; passed ones dim.
+    const marks=e.kit?KITS[e.kit.tier].phases.map((p,i)=>`<b class="ptick${i<e.kit!.phase?' past':''}" style="left:${p*100}%"></b>`).join(''):'';
+    if(hud.ePh.innerHTML!==marks) hud.ePh.innerHTML=marks;}
+  renderFoes(bt);
   if(u){setText(hud.pName,u.name); setText(hud.pLvl,'Lv '+u.m.lvl); setText(hud.pEl,ELEM[u.sp.el].name); hud.pEl.className='chip '+u.sp.el;
     hud.pHp.style.width=(100*u.hp/u.maxHp)+'%'; setText(hud.pHpT,`${Math.ceil(u.hp)} / ${u.maxHp}`);
     hud.pEn.style.width=u.energy+'%'; const rdy=u.energy>=100; hud.pPanel.classList.toggle('ready',rdy); setText(hud.eReady,rdy?`${u.sp.special} ready · swipe up`:Math.floor(u.energy)+'%');}
@@ -718,8 +892,14 @@ export function release(ev: PointerEvent){
   const q=ptr; ptr=null;
   if(ev.type==='pointercancel'||q.fired) return;
   const dx=q.x-q.x0, dy=q.y-q.y0;
-  if(Math.hypot(dx,dy)<swipeDistances(prefs).tap) playerAct('tap'); else gesture(dx,dy);
+  if(Math.hypot(dx,dy)<swipeDistances(prefs).tap){
+    // Tapping a different enemy aims at it instead of striking.
+    const f=B&&B.foes.length>1?foeAt(q.x0,q.y0):undefined;
+    if(f&&f!==B?.enemy){setTarget(f); return}
+    playerAct('tap');
+  } else gesture(dx,dy);
 }
+$('#eFoes').addEventListener('click',ev=>{const b=(ev.target as Element).closest<HTMLElement>('[data-f]'); const f=b&&B?.foes[Number(b.dataset.f)]; if(f) setTarget(f)});
 field.addEventListener('pointerup',release); field.addEventListener('pointercancel',release);
 field.addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('keydown',ev=>{const bt=B; if(!bt) return;
@@ -730,4 +910,5 @@ document.addEventListener('keydown',ev=>{const bt=B; if(!bt) return;
   else if(k==='i'||k==='arrowup') {ev.preventDefault(); playerAct('special');}
   else if(k===' '||k==='l'||k==='arrowdown'){ev.preventDefault(); parry();}
   else if(['1','2','3'].includes(k)) swapTo(+k-1);
+  else if(k==='t'||k==='tab'){ev.preventDefault(); const a=alive(); if(a.length>1){const i=a.indexOf(bt.enemy!); setTarget(a[(i+1)%a.length])}}
 });

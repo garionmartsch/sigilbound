@@ -1,4 +1,4 @@
-import { MAX_EVO, MAX_SKILL, SPECIES, capOf } from './data';
+import { MAX_EVO, MAX_SKILL, capOf, collectible } from './data';
 import { campaignFromOldStage, newCampaign } from './campaign';
 import type { Card, SaveData } from './types';
 import { clamp } from './util';
@@ -14,7 +14,7 @@ export function defaultSave(): SaveData{
 }
 /** Bring an older or partial save up to the current shape. */
 export function migrate(s: any): SaveData{
-  s.roster=s.roster.filter((m: any)=>m&&SPECIES[m.sp]);
+  s.roster=s.roster.filter((m: any)=>m&&collectible(m.sp));
   if(!s.roster.length) return defaultSave();
   s.roster.forEach((m: Card)=>{m.evo=clamp(m.evo||0,0,MAX_EVO);m.skill=clamp(m.skill||1,1,MAX_SKILL);m.locked=!!m.locked;m.xp=m.xp||0;m.lvl=clamp(m.lvl||1,1,capOf(m))});
   if(typeof s.gold!=='number') s.gold=1500;

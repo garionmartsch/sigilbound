@@ -59,6 +59,8 @@ export interface Species {
   evoLooks?: [string, string];
   /** Made by tools/generate-commons.ts rather than designed by hand. */
   generated?: boolean;
+  /** Only ever met as a boss: never summoned, dropped or given as a reward. */
+  bossOnly?: boolean;
   // Optional features for the code-drawn bodies.
   horns?: number;
   eyes?: number;

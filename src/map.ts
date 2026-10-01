@@ -4,8 +4,9 @@ import { startBattle } from './battle';
 import {
   CHEST_MILESTONES, GATE, MAIN_STAGES, SIDE_AFTER, chestReward, claimChest, firstClearBonus, frontier,
   planStage, regionKey, regionMaxStars, regionStages, regionStars, regionUnlocked, roman, stageId, stageUnlocked,
-  topCircle, type StageRef,
+  planBoss, topCircle, type StagePlan, type StageRef,
 } from './campaign';
+import { KITS, MOVE_NAMES } from './bosses';
 import { ELEM, ELEM_ORDER, FORMS, RARITY, SPECIES, elemMult } from './data';
 import { REGIONS, SIGIL_GATE, returnIntro } from './regions';
 import { newCard, persist, save, teamMembers } from './save';
@@ -105,10 +106,10 @@ export function renderMap() {
   nodesEl.innerHTML = layout(v.circle, v.region).map(({ ref, x, y }) => {
     const p = planStage(ref), stars = s.stars[p.id] ?? 0, open = stageUnlocked(s, ref);
     const cls = ['mnode', ref.kind, p.isBoss ? 'boss' : '', stars ? 'cleared' : '', open ? '' : 'locked', p.id === fid ? 'current' : ''].join(' ');
-    const ruler = p.waves[2];
+    const ruler = p.waves[2][0], warden = planBoss(p)?.tier === 'warden';
     const inner = p.isBoss
       ? `<canvas class="pcan" data-sp="${ruler.key}" data-evo="${ruler.evo}" data-seed="2"></canvas><span class="mn-tag">${p.kind === 'gate' ? 'Gate' : 'Boss'}</span>`
-      : `<span class="mn-num">${ref.kind === 'side' ? `S${ref.index + 1}` : ref.index + 1}</span>`;
+      : `<span class="mn-num">${ref.kind === 'side' ? `S${ref.index + 1}` : ref.index + 1}</span>${warden ? '<span class="mn-tag warden">Warden</span>' : ''}`;
     return `<button class="${cls}" style="left:${x * 100}%;top:${y}px;--ec:${ELEM[p.el].color}" data-id="${p.id}" aria-label="${p.label} ${p.name}${open ? '' : ', locked'}${stars ? `, ${stars} stars` : ''}">
       ${inner}${open ? `<span class="mn-stars">${starsHtml(stars)}</span>` : LOCK_SVG}</button>`;
   }).join('');
@@ -151,12 +152,15 @@ function openStage(id: string) {
     <div class="sh-top">${chip(p.el)}<span class="sh-label">${p.label}${ref.kind === 'side' ? ' · Side stage' : ''}</span><span class="sh-stars">${starsHtml(stars)}</span></div>
     <h3>${p.name}</h3>
     ${p.bossLine ? `<p class="sh-quote">${p.bossLine}</p>` : ''}
-    <div class="sh-enemies">${p.waves.map((w, i) => `
-      <div class="se ${w.boss ? 'ruler' : w.leader ? 'leader' : ''}">
-        <canvas class="pcan" data-sp="${w.key}" data-evo="${w.evo}" data-seed="${i * 1.7}"></canvas>
-        <b>${FORMS[w.key][w.evo]}</b><small>Lv ${w.lvl} · ${ELEM[SPECIES[w.key].el].name}</small>
-        <em>${w.boss ? 'Boss' : w.leader ? 'Leader' : `Wave ${i + 1}`}</em>
-      </div>`).join('')}</div>
+    <div class="sh-waves">${p.waves.map((group, i) => `
+      <div class="sw"><span class="sw-l">Wave ${i + 1}${group.length > 1 ? `<small>${group.length} at once</small>` : ''}</span>
+      <div class="sh-enemies n${group.length}">${group.map((w, j) => `
+        <div class="se ${w.boss ? 'ruler' : w.tier ? 'warden' : w.leader ? 'leader' : ''}">
+          <canvas class="pcan" data-sp="${w.key}" data-evo="${w.evo}" data-seed="${i * 1.7 + j}"></canvas>
+          <b>${FORMS[w.key][w.evo]}</b><small>Lv ${w.lvl} · ${ELEM[SPECIES[w.key].el].name}</small>
+          ${w.boss || w.tier || w.leader ? `<em>${w.boss ? 'Boss' : w.tier ? 'Warden' : 'Leader'}</em>` : ''}
+        </div>`).join('')}</div></div>`).join('')}</div>
+    ${bossMovesHtml(p)}
     <p class="sh-hint">Strong here: ${countersOf(p.el).map(chip).join(' ')}</p>
     <div class="sh-team"><span>Your team</span>${team}<button class="linkish" id="shTeam">Change team</button></div>
     <ul class="sh-crit"><li>★ Clear the stage</li><li>★ Lose no beast</li><li>★ Finish under ${p.par}s</li></ul>
@@ -169,6 +173,16 @@ function openStage(id: string) {
   $('#shFight').onclick = () => { if (!open) return; stageSheet.hidden = true; startBattle({ plan: p }); };
 }
 stageSheet.addEventListener('click', e => { if (e.target === stageSheet) stageSheet.hidden = true; });
+
+/** For a stage with a boss: its phases and signature moves, with how to counter each. */
+function bossMovesHtml(p: StagePlan): string {
+  const b = planBoss(p); if (!b?.tier) return '';
+  const kit = KITS[b.tier], el = SPECIES[b.key].el;
+  const moves = [...new Set(kit.moves.flat())];
+  const how: Record<string, string> = { smash: 'can’t be parried: break it with a Special or heavy hits', sweep: 'hits your whole team: parry it', barrage: 'three quick strikes: parry each' };
+  return `<div class="sh-boss"><span>${FORMS[b.key][b.evo]} · ${kit.phases.length + 1} phases</span><ul>${moves.map(m =>
+    `<li><b>${MOVE_NAMES[el][m]}</b> ${how[m]}</li>`).join('')}</ul></div>`;
+}
 
 /* ---------- story and chests ---------- */
 function openStory(circle: number, region: number) {

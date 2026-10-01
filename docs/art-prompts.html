@@ -56,13 +56,13 @@ a{color:var(--gold)}
 <div class="wrap">
   <header>
     <h1>Sigilbound Art Prompts</h1>
-    <p class="lede">Prompts for Google Gemini's image generation, covering all 96 beasts in their base, evolved and final forms. These make stand-in art until you have a commissioned artist.</p>
+    <p class="lede">Prompts for Google Gemini's image generation, covering all 105 beasts in their base, evolved and final forms. These make stand-in art until you have a commissioned artist.</p>
   </header>
 
   <section>
     <h2>How to use these</h2>
     <ol class="steps">
-      <li><b>Start each beast in a fresh Gemini chat.</b> Paste its base-form prompt. Every base prompt already includes the shared style block, so all 96 beasts come out looking like one game.</li>
+      <li><b>Start each beast in a fresh Gemini chat.</b> Paste its base-form prompt. Every base prompt already includes the shared style block, so all 105 beasts come out looking like one game.</li>
       <li><b>Regenerate until one feels right.</b> Ask for 2–3 more tries if needed. Once you love one, keep it as your <b>style reference</b>: attach it to later base prompts and add "Match the art style of the attached image."</li>
       <li><b>Evolve in the same chat.</b> Paste the evolved-form prompt. It asks Gemini to edit the image it just made, which keeps the face and colors consistent. Then do the same with the final-form prompt.</li>
       <li><b>Save each image with the file name shown</b> (for example <span class="file">cindermaw_0.png</span>, where 0, 1 and 2 are the form number). When the game gets image support it can pick them up by name.</li>
@@ -167,6 +167,10 @@ const BEASTS=[
   "A young ice dragon with pale blue scales, frosty white spots, crystal horns, bat wings with icy membranes and a spiked tail.",
   "Larger, with icicles hanging from its wings and a frost cloud around its jaws.",
   "A majestic ice dragon with crystalline wings, a glittering crown of horns and snow falling around it.",false],
+ ["rimehowl","frost","epic",["Rimehowl","Rimehowl, Pass Warden","Rimehowl, Endless Winter"],
+  "A great frost wolf with slate-blue fur striped in white, icicle horns, a tail ending in an ice spike and pale glowing eyes.",
+  "Larger, with a mane of frost crystals and breath that freezes the air.",
+  "A giant blizzard wolf with an aurora trailing from its mane and a storm of snow around it.",false],
  ["cyclonyx","gale","epic",["Cyclonyx","Cyclone Raptor","Hurricane Sovereign"],
   "A sharp-eyed raptor with deep green feathers, pale wind-stripe markings and long tail streamers.",
   "Larger, with wings that trail small whirlwinds.",
@@ -175,10 +179,18 @@ const BEASTS=[
   "A slim sky drake with jade scales, pale feathered wings and a leaf-shaped tail fin.",
   "Longer wings with feather blades and streaming wind trails.",
   "A soaring sky dragon with four feathered wings and a halo of wind.",false],
+ ["tempestrix","gale","epic",["Tempestrix","Tempestrix, Sky Warden","Tempestrix, Endless Gale"],
+  "A sleek wind drake with sea-green scales, pale feathered wings, two swept-back horns and a tail that ends in a fan of feathers.",
+  "Larger, with a ring of whirling wind around it and longer feathered wings.",
+  "A great storm drake with a cyclone forming beneath it and feathers whipping through the air.",false],
  ["hearthwyrm","pyre","epic",["Hearthwyrm","Forgewyrm","Sunheart Wyrm"],
   "A coiled serpent of deep red scales with an ember-gold belly, a small crown of flame on its head and a burning tail tip.",
   "Longer and thicker, with flames licking along its spine and brighter scales.",
   "A great fire serpent wrapped around a floating sun-orb, crowned with living flame.",false],
+ ["slagmaw","pyre","epic",["Slagmaw","Slagmaw, Kiln Warden","Slagmaw, Heart of Slag"],
+  "A hulking golem of cooled black slag with molten orange cracks, a furnace mouth that drips lava, jagged spikes of obsidian on its shoulders and small burning eyes.",
+  "Bigger, with rivers of lava running down its arms and a smoking chimney growing from its back.",
+  "A towering slag colossus with a roaring furnace in its chest, a crown of obsidian spikes and a rain of embers around it.",false],
  ["vhal","pyre","epic",["Vhal the Kilnborn","Vhal, Forge Tyrant","Vhal, Heart of the Kiln"],
   "A towering kiln demon with a deep crimson body, a glowing ember-orange chest, four large swept-back horns, forge-like cracks glowing across its hide, massive fists and a fierce, noble expression. Legendary and intimidating. Fire element.",
   "Plated in dark obsidian armor with molten seams, six horns, fists like forge hammers, and heat shimmering off its body.",
@@ -187,6 +199,10 @@ const BEASTS=[
   "A golden stone guardian with white glowing runes, small feathered wings and a radiant core shaped like a sunrise.",
   "Larger wings and polished gold armor with brighter runes.",
   "A towering sun sentinel with great wings of light and a blazing halo.",false],
+ ["haloth","radiant","epic",["Haloth","Haloth, Nave Warden","Haloth, Unblinking"],
+  "A floating golden spirit with three solemn eyes, a halo of light above its head, glowing runes on its body and long trailing ribbons of light.",
+  "Grows two more halos and shining wings of light; its gaze is harsher.",
+  "A blinding seraph of gold with rings of halos, six eyes and lances of light circling it.",false],
  ["seraphel","radiant","epic",["Seraphel","Seraphel, Bright Wing","Seraphel, Crown of Dawn"],
   "An angelic golden bird with cream and gold feathers, a halo-shaped crest, large luminous wings, bright white eyes and a noble expression. Legendary and holy. Light element.",
   "Four wings instead of two, a brighter halo, and feathers edged in light.",
@@ -195,6 +211,10 @@ const BEASTS=[
   "A heavy beast of dark basalt with glowing orange cracks, four tusk-like horns and jagged rock spikes on its back.",
   "Bigger, with huge curved tusks and magma glowing in its cracks.",
   "A colossal obsidian mammoth with volcanic vents on its back.",false],
+ ["cragjaw","stone","epic",["Cragjaw","Cragjaw, Quarry Warden","Cragjaw, Mountain-Eater"],
+  "A heavy rock brute with a jaw like a boulder, cracked brown stone skin, two stubby stone horns, crystal spikes on its back and glowing orange eyes.",
+  "Bigger, with crystal veins glowing through its body and rubble falling from its shoulders.",
+  "A cliff-sized brute with a mountain ridge along its spine and a molten-orange crystal core in its chest.",false],
  ["geodrake","stone","epic",["Geodrake","Geowyvern","Amethyst Dragon"],
   "A stone dragon with rocky brown scales, purple crystal growths like geodes along its back, and heavy stone wings.",
   "More crystals erupt from its shoulders and wings.",
@@ -207,6 +227,14 @@ const BEASTS=[
   "A serpent of dark indigo scales with glowing yellow lightning stripes and a crackling spiked tail.",
   "Longer, with storm clouds trailing from its fins.",
   "A sky serpent coiled through thunderclouds, lightning pouring off its body.",false],
+ ["voltigon","storm","epic",["Voltigon","Voltigon, Spire Warden","Voltigon, Living Storm"],
+  "A fierce storm raptor with indigo feathers, yellow lightning stripes, a crest that crackles with sparks and a hooked golden beak.",
+  "Bigger, with wings like thunderclouds and lightning arcing between its feathers.",
+  "A colossal thunderbird with a crown of lightning and a storm cloud forming behind its wings.",false],
+ ["blightroot","thorn","epic",["Blightroot","Blightroot, Thorn Warden","Blightroot, Rotting Crown"],
+  "A hunched forest brute of twisted dark roots, with sickly lime fungus spots, two thorny branch horns, a spiked back and glowing yellow-green eyes.",
+  "Bigger, with poison flowers blooming across its back and roots dragging behind it.",
+  "A towering blighted tree giant with a crown of dead branches, clouds of spores and glowing fungus everywhere.",false],
  ["grovewarden","thorn","epic",["Grovewarden","Grovekeeper","Heartwood Titan"],
   "A sturdy golem made of living wood and vines, with glowing green runes carved into its bark and small thorny branches on its shoulders.",
   "Taller, with thicker vines and flowering branches growing from its back.",
@@ -223,6 +251,14 @@ const BEASTS=[
   "A sea drake with deep blue scales, a pale aqua belly, finned wings and a fish-fin tail.",
   "Larger, with sharper fins, coral horns and water streaming from its wings.",
   "A sleek sea dragon trailing a whirlpool, with glowing blue markings and huge finned wings.",false],
+ ["wrecktooth","tide","epic",["Wrecktooth","Wrecktooth, Reef Warden","Wrecktooth, Drowned King"],
+  "A scarred sea serpent with dark navy scales, pale aqua stripes, a jaw full of jagged teeth, torn fins and broken ship planks tangled around its coils.",
+  "Larger, with barnacle armor, an anchor chain wrapped around its neck and glowing scars.",
+  "A colossal drowned serpent wearing a crown of shipwreck timbers, with a whirlpool churning around its coils.",false],
+ ["gloamreaver","umbral","epic",["Gloamreaver","Gloamreaver, Veil Warden","Gloamreaver, Night Unending"],
+  "A hooded shadow wraith with a deep violet body, three pale glowing eyes, two curved horns and long clawed hands made of smoke.",
+  "Larger, with a cloak of night stars and chains of shadow trailing behind it.",
+  "A towering reaper of the night with an eclipse halo behind its head and shadows reaching from it.",false],
  ["nightveil","umbral","epic",["Nightveil","Nightveil Raven","Eclipse Raven"],
   "A dark raven with violet-black feathers speckled like stars, long tail feathers and piercing lilac eyes.",
   "Larger, with feathers that trail smoke and more starry spots.",
@@ -508,7 +544,7 @@ document.getElementById('style').textContent=STYLE;
 
 const filters=document.getElementById('filters');
 let active='all';
-filters.innerHTML=`<button data-f="all" aria-pressed="true">All 96</button><button data-f="todo" aria-pressed="false">Needs art</button>`+Object.entries(ELEM).map(([k,v])=>`<button data-f="${k}" aria-pressed="false" style="--ec:${v.color}">${v.name}</button>`).join('');
+filters.innerHTML=`<button data-f="all" aria-pressed="true">All 105</button><button data-f="todo" aria-pressed="false">Needs art</button>`+Object.entries(ELEM).map(([k,v])=>`<button data-f="${k}" aria-pressed="false" style="--ec:${v.color}">${v.name}</button>`).join('');
 
 const list=document.getElementById('list');
 list.innerHTML=BEASTS.map(b=>{

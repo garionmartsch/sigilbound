@@ -4,8 +4,9 @@ import {
   CHEST_MILESTONES, GATE, MAIN_STAGES, SIDE_AFTER, campaignFromOldStage, chestReward, claimChest, difficulty, frontier,
   isCleared, newCampaign, nextMain, openableChests, parseStageId, planStage, recordClear, regionStages, regionStars,
   regionUnlocked, roman, stageId, stageUnlocked, starsFor, topCircle, type CampaignState, type StageRef,
+  WARDEN_STAGE, nemesisOf, planBoss, wardenFor,
 } from '../src/campaign';
-import { SPECIES } from '../src/data';
+import { ELEM, SPECIES } from '../src/data';
 import { REGIONS, SIGIL_GATE } from '../src/regions';
 import { migrate } from '../src/save';
 
@@ -62,21 +63,23 @@ describe('stage plans', () => {
   it('put the region\'s Legendary at the end of its trail, evolving in later Circles', () => {
     REGIONS.forEach((reg, r) => {
       const p1 = planStage(main(r, MAIN_STAGES - 1)), p3 = planStage(main(r, MAIN_STAGES - 1, 3));
-      assert.ok(p1.isBoss && p1.waves[2].boss);
-      assert.equal(p1.waves[2].key, reg.boss);
-      assert.equal(p1.waves[2].evo, 0);
-      assert.equal(p3.waves[2].evo, 2);
+      assert.equal(p1.waves[2].length, 1, 'the ruler fights alone');
+      assert.ok(p1.isBoss && p1.waves[2][0].boss);
+      assert.equal(p1.waves[2][0].key, reg.boss);
+      assert.equal(p1.waves[2][0].tier, 'ruler');
+      assert.equal(p1.waves[2][0].evo, 0);
+      assert.equal(p3.waves[2][0].evo, 2);
     });
   });
 
   it('draw mostly from the region\'s own element', () => {
     let home = 0, total = 0;
-    REGIONS.forEach((reg, r) => { for (let i = 0; i < MAIN_STAGES - 1; i++) for (const w of planStage(main(r, i)).waves) { total++; if (SPECIES[w.key].el === reg.el) home++; } });
+    REGIONS.forEach((reg, r) => { for (let i = 0; i < MAIN_STAGES - 1; i++) for (const w of planStage(main(r, i)).waves.flat().filter(x => !x.tier)) { total++; if (SPECIES[w.key].el === reg.el) home++; } });
     assert.ok(home / total > 0.6, `${home}/${total}`);
   });
 
   it('keep Legendaries out of Circle I except as rulers, and Mythics out of ordinary stages', () => {
-    for (let r = 0; r < GATE; r++) for (const ref of regionStages(1, r)) for (const w of planStage(ref).waves) {
+    for (let r = 0; r < GATE; r++) for (const ref of regionStages(1, r)) for (const w of planStage(ref).waves.flat()) {
       if (!w.boss) assert.notEqual(SPECIES[w.key].rarity, 'legendary', `${stageId(ref)} ${w.key}`);
       assert.notEqual(SPECIES[w.key].rarity, 'mythic');
     }
@@ -88,7 +91,47 @@ describe('stage plans', () => {
       const d = difficulty(ref);
       assert.ok(d > last, stageId(ref)); last = d;
     }
-    assert.ok(planStage(main(0, 0, 5)).waves[0].lvl > planStage(main(8, 6, 1)).waves[0].lvl);
+    assert.ok(planStage(main(0, 0, 5)).waves[0][0].lvl > planStage(main(8, 6, 1)).waves[0][0].lvl);
+  });
+
+  it('send one enemy at a time early, then groups of up to three', () => {
+    for (let i = 0; i < 4; i++) assert.deepEqual(planStage(main(0, i)).waves.map(w => w.length), [1, 1, 1], `1-${i + 1}`);
+    let groups = 0, max = 0;
+    for (let c = 1; c <= 3; c++) for (let r = 0; r < GATE; r++) for (const ref of regionStages(c, r)) for (const w of planStage(ref).waves) {
+      assert.ok(w.length >= 1 && w.length <= 3, stageId(ref));
+      if (w.length > 1) groups++; max = Math.max(max, w.length);
+      if (w.some(e => e.tier)) assert.equal(w.length, 1, `${stageId(ref)}: bosses fight alone`);
+    }
+    assert.ok(groups > 100 && max === 3);
+    assert.deepEqual(planStage({ circle: 1, region: 0, kind: 'side', index: 0 }).waves.map(w => w.length), [2, 3, 3], 'side stage 1 is a swarm');
+  });
+
+  it('put a warden at stage 4 and a wandering warden at side stage 2 of every region', () => {
+    REGIONS.forEach((reg, r) => {
+      const own = planStage(main(r, WARDEN_STAGE)).waves[2][0];
+      assert.equal(own.tier, 'warden'); assert.equal(own.key, wardenFor(reg.el));
+      assert.ok(SPECIES[own.key].bossOnly);
+      const roam = planStage({ circle: 1, region: r, kind: 'side', index: 1 }).waves[2][0];
+      assert.equal(roam.tier, 'warden'); assert.equal(SPECIES[roam.key].el, nemesisOf(reg.el));
+      assert.ok(ELEM[nemesisOf(reg.el)].beats.includes(reg.el));
+    });
+  });
+
+  it('never use boss-only wardens as ordinary enemies or rewards', () => {
+    for (let c = 1; c <= 2; c++) for (let r = 0; r < GATE; r++) {
+      for (const ref of regionStages(c, r)) for (const w of planStage(ref).waves.flat()) if (SPECIES[w.key].bossOnly) assert.equal(w.tier, 'warden');
+      const card = chestReward(c, r, 30).card; assert.ok(card && !SPECIES[card].bossOnly);
+    }
+  });
+
+  it('give the Gate a Mythic guardian with the guardian boss kit', () => {
+    const g = planStage(gate(1)), boss = planBoss(g)!;
+    assert.equal(boss.tier, 'guardian'); assert.equal(SPECIES[boss.key].rarity, 'mythic');
+  });
+
+  it('allow more time for stages with more enemies', () => {
+    const solo = planStage(main(0, 0)), swarm = planStage({ circle: 1, region: 0, kind: 'side', index: 0 });
+    assert.equal(solo.par, 75); assert.equal(swarm.par, 85 + 8 * 5);
   });
 
   it('make side stages a notch harder than the stage they branch from', () => {

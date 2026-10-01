@@ -31,6 +31,10 @@ export const RARITY_ORDER: RarityKey[] = ['common', 'rare', 'epic', 'legendary',
 /** Every beast, keyed by a permanent id. See src/beasts/. */
 export const SPECIES: Record<string, Species> = ALL_BEASTS;
 
+/** Beasts players can own. Boss-only wardens are left out of summons, drops and rewards. */
+export const collectible = (k: string) => !!SPECIES[k] && !SPECIES[k].bossOnly;
+export const COLLECTIBLE_KEYS = Object.keys(SPECIES).filter(collectible);
+
 /** Names of each beast's three forms: base, evolved, final. */
 export const FORMS: Record<string, [string, string, string]> =
   Object.fromEntries(Object.entries(SPECIES).map(([k, sp]) => [k, sp.forms]));
