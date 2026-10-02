@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Sigilbound</string>
+    <string name="title_activity_main">Sigilbound</string>
+    <string name="package_name">com.garionmartsch.sigilbound</string>
+    <string name="custom_url_scheme">com.garionmartsch.sigilbound</string>
+</resources>
