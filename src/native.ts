@@ -34,8 +34,12 @@ export async function initNative() {
   const parts = { storage: initStorage, haptics: initHaptics, back: initBack };
   const ok = await Promise.all(Object.entries(parts).map(([name, fn]) =>
     fn().then(() => `${name}=ok`, e => { console.error(`native ${name} failed`, e); return `${name}=failed`; })));
-  // The CI emulator check looks for this line in the device log.
+  // The CI emulator check looks for these lines in the device log.
   console.log(`[sigilbound] app ready ${ok.join(' ')} screen=${current}`);
+  setTimeout(() => {
+    const cs = getComputedStyle(document.documentElement), v = (k: string) => cs.getPropertyValue(`--safe-area-inset-${k}`).trim() || 'unset';
+    console.log(`[sigilbound] insets top=${v('top')} bottom=${v('bottom')} viewport=${innerWidth}x${innerHeight}`);
+  }, 2500);
 }
 
 /* ---------- fonts ---------- */

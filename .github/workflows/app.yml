@@ -70,6 +70,11 @@ jobs:
   android-check:
     needs: android
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Android 14, and Android 15 where apps are drawn edge to edge behind the system bars.
+        api-level: [34, 35]
     steps:
       - uses: actions/download-artifact@v5
         with:
@@ -82,11 +87,11 @@ jobs:
       - name: Run the app on an emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: ${{ matrix.api-level }}
           arch: x86_64
           target: google_apis
           disable-animations: true
-          script: bash -c 'adb install -r app-debug.apk && adb logcat -c && adb shell am start -n com.garionmartsch.sigilbound/.MainActivity && sleep 30 && adb logcat -d > logcat.txt; grep -E "Capacitor/Console|Capacitor/Plugin|AndroidRuntime|chromium" logcat.txt | tail -n 80 > app-log.txt; cat app-log.txt; while IFS= read -r l; do echo "::notice title=game console::$l"; done < <(grep -E "Capacitor/Console" app-log.txt | head -n 9); grep -q "app ready storage=ok haptics=ok back=ok" app-log.txt && ! grep -qE "Uncaught|FATAL EXCEPTION" logcat.txt'
+          script: bash -c 'adb install -r app-debug.apk && adb logcat -c && adb shell am start -n com.garionmartsch.sigilbound/.MainActivity && sleep 35 && adb logcat -d > logcat.txt; grep -E "Capacitor/Console|Capacitor/Plugin|AndroidRuntime|chromium" logcat.txt | tail -n 80 > app-log.txt; cat app-log.txt; while IFS= read -r l; do echo "::notice title=game console::$l"; done < <(grep -E "\[sigilbound\]|Capacitor/Console.*Error" app-log.txt | head -n 9); grep -q "app ready storage=ok haptics=ok back=ok" app-log.txt && ! grep -qE "Uncaught|FATAL EXCEPTION" logcat.txt'
 
   ios:
     needs: android
