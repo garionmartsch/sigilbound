@@ -2,11 +2,11 @@
 
 A mobile monster-collecting battler. Summon beasts, fight with swipe gestures, feed and evolve your cards, and bind all nine elements.
 
-Written in TypeScript and built with Vite. Next it gets packaged as an iOS and Android app with Capacitor.
+Written in TypeScript and built with Vite, and packaged as an iOS and Android app with [Capacitor](https://capacitorjs.com).
 
 ## Getting started
 
-You need [Node.js](https://nodejs.org) 20 or newer.
+You need [Node.js](https://nodejs.org) 22 or newer.
 
 ```bash
 npm install      # once, to download the tools
@@ -26,6 +26,54 @@ npm run dev      # start the game with live reload
 | `npm run gen:prompts` | Rebuild the Gemini prompt sheet from the beast data |
 
 Every push to GitHub runs the type check, the tests and the build automatically. See the **Actions** tab.
+
+## Phone app
+
+The game is wrapped as a native app with Capacitor 8. The web game runs inside the app unchanged; `src/native.ts` adds the phone-only parts, and does nothing in a browser:
+
+- **Haptics** through the phone's vibration engine, so vibration works on iPhone too.
+- **Safer saves.** Progress and settings are also copied to app storage, and restored if the phone clears the app's web storage.
+- **Android back button:** closes the open menu, pauses a fight, or goes back to the home screen; on the home screen it sends the app to the background.
+- **Offline fonts.** The two fonts are bundled (`tools/fetch-fonts.sh`), so text looks right with no connection.
+- Portrait only, edge-to-edge with safe areas for notches, and the Sigilbound sigil as icon and splash screen (source art in `assets/`).
+
+App id: `com.garionmartsch.sigilbound` (in `capacitor.config.json`). It can still change freely, but not after the first upload to an app store.
+
+### Get the Android app without installing anything
+
+Every push to `main` or `feature/app` runs the **App** workflow on GitHub. It builds a debug APK, boots it in an Android emulator to check the game loads, and builds the iOS project for the simulator.
+
+1. Open the repository on GitHub, go to **Actions**, then **App**, and open the latest green run.
+2. Under **Artifacts**, download **sigilbound-android-debug** and unzip it to get `app-debug.apk`.
+3. Copy it to an Android phone and open it. Android asks to allow installs from that app (Files, Drive, etc.) the first time.
+
+This is a debug build: fine for you and testers, not for the Play Store (that needs a signed release build; see below).
+
+### Build it yourself
+
+You need Node 22, [Android Studio](https://developer.android.com/studio) for Android, and a Mac with Xcode 26 for iOS.
+
+| Command | What it does |
+|---|---|
+| `npm run app:android` | Build the game, copy it into `android/`, and open Android Studio. Press Run to install on a plugged-in phone or emulator. |
+| `npm run app:ios` | The same for `ios/` and Xcode (Mac only). |
+| `npm run app:apk` | Build a debug APK from the command line: `android/app/build/outputs/apk/debug/app-debug.apk` |
+| `npm run app:sync` | Copy the latest game build into both native projects |
+| `npm run app:assets` | Regenerate app icons and splash screens from `assets/` |
+
+All `app:` commands fetch the fonts first if they're missing (they need `bash` and `curl`; on Windows, use Git Bash).
+
+**After changing the game**, run `npm run app:sync` (or any `app:` command) so the native projects get the new build. The `android/` and `ios/` folders are committed; edit them in Android Studio or Xcode for native settings like permissions. `node tools/patch-native.mjs android|ios` re-applies the portrait lock if a project is ever regenerated.
+
+### Getting onto an iPhone
+
+iPhones only install apps signed with an Apple developer account. For your own phone, a free Apple ID works for 7-day test builds: open `ios/App/App.xcodeproj` in Xcode on a Mac, pick your team under **Signing & Capabilities**, plug in the phone and press Run. For testers, join the Apple Developer Program ($99 a year) and upload through TestFlight.
+
+### Store releases (later)
+
+- **Google Play:** create an upload key, set up signing in `android/app/build.gradle`, and build an `.aab` with `./gradlew bundleRelease` (Android Studio: Build, Generate Signed Bundle).
+- **App Store:** in Xcode, Product, Archive, then upload to App Store Connect.
+- Both stores need the privacy policy, age rating and listing items on the roadmap first.
 
 ## Controls
 
@@ -142,7 +190,7 @@ The **Pause** button in battle opens the same menu and holds the fight still unt
 ## Roadmap
 
 1. **Playable game:** art for all beasts, multi-enemy waves, music (the settings menu will need a music volume then).
-2. **Real app:** package with Capacitor for iOS and Android, with device saves, native haptics and a closed beta.
+2. **Real app:** ~~package with Capacitor, device saves, native haptics~~ done; next a closed beta (TestFlight and Google Play internal testing).
 3. **Balance and retention:** economy tuning, daily quests, events.
 4. **Online and launch:** accounts and cloud saves, monetization, store listings, release.
 
