@@ -1,0 +1,24 @@
+{
+  "appId": "com.garionmartsch.sigilbound",
+  "appName": "Sigilbound",
+  "webDir": "dist",
+  "backgroundColor": "#110D18",
+  "android": {
+    "backgroundColor": "#110D18"
+  },
+  "ios": {
+    "backgroundColor": "#110D18",
+    "contentInset": "never"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "launchAutoHide": true,
+      "backgroundColor": "#110D18",
+      "showSpinner": false
+    },
+    "SystemBars": {
+      "insetsHandling": "css"
+    }
+  }
+}

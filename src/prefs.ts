@@ -1,4 +1,5 @@
 import { SETTINGS_KEY, normalizeSettings, type Settings } from './settingsCore';
+import { hooks } from './events';
 import { RM } from './util';
 
 /*
@@ -25,6 +26,8 @@ export const onPrefs = (fn: (s: Settings) => void) => { listeners.push(fn); };
 export function setPref<K extends keyof Settings>(key: K, value: Settings[K]) {
   prefs[key] = value;
   Object.assign(prefs, normalizeSettings(prefs, RM));
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(prefs)); } catch (e) { /* storage unavailable */ }
+  const json = JSON.stringify(prefs);
+  try { localStorage.setItem(SETTINGS_KEY, json); } catch (e) { /* storage unavailable */ }
+  hooks.storageMirror?.(SETTINGS_KEY, json);
   listeners.forEach(fn => fn(prefs));
 }

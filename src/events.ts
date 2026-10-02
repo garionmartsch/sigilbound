@@ -34,4 +34,8 @@ export function on(fn: Listener): () => void {
 export const hooks = {
   /** Force the rarity of the next Rift Summon (the tutorial's guaranteed Rare). */
   summonRarity: null as RarityKey | null,
+  /** In the phone app: also store saves and settings in app storage, which the OS won't clear (src/native.ts). */
+  storageMirror: null as ((key: string, value: string) => void) | null,
+  /** In the phone app: play vibration through the native haptics engine, which also works on iPhone. */
+  haptic: null as ((pattern: number[]) => void) | null,
 };

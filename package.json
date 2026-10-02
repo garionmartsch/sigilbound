@@ -1,7 +1,7 @@
 {
   "name": "sigilbound",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Mobile monster-collecting battler: summon, swipe, bind.",
   "type": "module",
   "scripts": {
@@ -11,14 +11,31 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "gen:commons": "tsx tools/generate-commons.ts",
-    "gen:prompts": "tsx tools/build-prompts.ts"
+    "gen:prompts": "tsx tools/build-prompts.ts",
+    "app:sync": "npm run app:fonts && npm run build && cap sync",
+    "app:android": "npm run app:fonts && npm run build && cap sync android && cap open android",
+    "app:ios": "npm run app:fonts && npm run build && cap sync ios && cap open ios",
+    "app:assets": "capacitor-assets generate --iconBackgroundColor '#110D18' --splashBackgroundColor '#110D18' --iconBackgroundColorDark '#110D18' --splashBackgroundColorDark '#110D18'",
+    "app:apk": "npm run app:fonts && npm run build && cap sync android && cd android && ./gradlew assembleDebug",
+    "app:fonts": "node -e \"process.exit(require('fs').existsSync('public/fonts/GrenzeGotisch.ttf')?0:1)\" || bash tools/fetch-fonts.sh"
   },
   "devDependencies": {
     "tsx": "^4.20.0",
     "typescript": "^6.0.0",
-    "vite": "^6.3.0"
+    "vite": "^6.3.0",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.0.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/haptics": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
+    "@capacitor/preferences": "^8.0.0",
+    "@capacitor/splash-screen": "^8.0.0"
   }
 }

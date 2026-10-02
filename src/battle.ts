@@ -744,7 +744,7 @@ export function drawBattle(){const bt=B; if(!bt) return;
       const bw=s*1.5, bx=E.x-bw/2, byy=E.y+s*0.95*es, k=clamp((e.breakDmg||0)/(e.maxHp*MOVES.smash.breakShare),0,1);
       c.fillStyle='rgba(12,8,16,0.85)'; c.fillRect(bx-2,byy-2,bw+4,10);
       c.fillStyle='#FFE3A0'; c.fillRect(bx,byy,bw*k,6);
-      c.font=`700 11px 'Barlow Semi Condensed', sans-serif`; c.fillStyle='#FFE3A0'; c.textAlign='center'; c.fillText('BREAK',E.x,byy+18);
+      c.font=`700 11px 'Sigil UI', 'Barlow Semi Condensed', sans-serif`; c.fillStyle='#FFE3A0'; c.textAlign='center'; c.fillText('BREAK',E.x,byy+18);
     }
     if(e.move==='barrage'&&e.state==='windup'){
       for(let i=0;i<(e.hitsLeft||0);i++){c.fillStyle='#FF8A8A'; ell(c,E.x+(i-((e.hitsLeft||1)-1)/2)*s*0.28,E.y+s*1.0*es,s*0.08,s*0.08); c.fill();}
@@ -812,7 +812,7 @@ export function drawBattle(){const bt=B; if(!bt) return;
   c.textAlign='center'; c.textBaseline='middle';
   bt.texts.forEach(tx=>{const k=tx.life/tx.max; c.globalAlpha=clamp(k*2,0,1);
     const sz=tx.size*(k>0.85?1+(k-0.85)*2:1);
-    c.font=`700 ${sz}px 'Barlow Semi Condensed', 'Arial Narrow', sans-serif`;
+    c.font=`700 ${sz}px 'Sigil UI', 'Barlow Semi Condensed', 'Arial Narrow', sans-serif`;
     c.lineWidth=4; c.strokeStyle='rgba(12,8,16,0.9)'; c.strokeText(tx.txt,tx.x,tx.y); c.fillStyle=tx.color; c.fillText(tx.txt,tx.x,tx.y);});
   c.globalAlpha=1;
   c.restore();

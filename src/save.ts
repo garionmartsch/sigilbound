@@ -1,5 +1,6 @@
 import { MAX_EVO, MAX_SKILL, capOf, collectible } from './data';
 import { campaignFromOldStage, newCampaign } from './campaign';
+import { hooks } from './events';
 import type { Card, SaveData } from './types';
 import { clamp } from './util';
 
@@ -34,7 +35,7 @@ export function load(): SaveData{
   for(const k of [KEY,OLDKEY]){try{const raw=localStorage.getItem(k); if(raw){const s=JSON.parse(raw); if(s&&Array.isArray(s.roster)&&Array.isArray(s.team)) return migrate(s)}}catch(e){}}
   return defaultSave();
 }
-export function persist(){try{localStorage.setItem(KEY,JSON.stringify(save))}catch(e){}}
+export function persist(){const json=JSON.stringify(save); try{localStorage.setItem(KEY,json)}catch(e){} hooks.storageMirror?.(KEY,json)}
 export let save: SaveData=load();
 /** Wipe progress and start a fresh save. */
 export function resetSave(){save=defaultSave();persist()}

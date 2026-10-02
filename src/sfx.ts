@@ -1,3 +1,4 @@
+import { hooks } from './events';
 import { onPrefs, prefs, setPref } from './prefs';
 import { gainFor, scaleBuzz } from './settingsCore';
 import { rand } from './util';
@@ -95,12 +96,14 @@ export const SFX = {
 };
 
 /* ---------- haptics ---------- */
-export const CAN_BUZZ = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
+/** This device can vibrate: through the app's native haptics, or the browser's vibration API (Android). */
+export const canBuzz = () => !!hooks.haptic || (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function');
 /** Vibrate, scaled by the player's vibration setting. */
 export function buzz(pattern: number | number[]) {
-  if (!CAN_BUZZ) return;
+  if (!canBuzz()) return;
   const p = scaleBuzz(pattern, prefs.buzz);
   if (!p) return;
+  if (hooks.haptic) { hooks.haptic(p); return; }
   try { navigator.vibrate(p); } catch (e) { /* not allowed here */ }
 }
 

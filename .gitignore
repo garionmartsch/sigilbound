@@ -5,7 +5,7 @@ Thumbs.db
 .idea/
 *.swp
 
-# Dependencies and build output (for the upcoming Phaser + Capacitor project)
+# Dependencies and build output
 node_modules/
 dist/
 build/
@@ -24,3 +24,6 @@ art/raw/
 # Secrets
 .env
 .env.*
+
+# Fonts are fetched at app build time (tools/fetch-fonts.sh)
+public/fonts/

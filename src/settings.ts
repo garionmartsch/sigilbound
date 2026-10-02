@@ -4,7 +4,7 @@ import { prefs, setPref } from './prefs';
 import { migrate, replaceSave, resetSave, save } from './save';
 import { current, renderHome, show } from './screens';
 import { decodeSave, encodeSave, type Settings } from './settingsCore';
-import { CAN_BUZZ, SFX, buzz } from './sfx';
+import { SFX, buzz, canBuzz } from './sfx';
 import { THEMES, cssVars, themeById } from './themes';
 import { replay } from './tutorial';
 import { $, $$ } from './util';
@@ -77,7 +77,7 @@ function render() {
         <div class="volrow"><input type="range" id="setVol" min="0" max="100" step="5" value="${prefs.volume}" aria-labelledby="l-volume" ${prefs.sound ? '' : 'disabled'}>
         <button id="setTest" ${prefs.sound ? '' : 'disabled'}>Test</button></div></div>
       ${seg('buzz', 'Vibration', [['off', 'Off'], ['light', 'Light'], ['normal', 'Normal'], ['strong', 'Strong']],
-        CAN_BUZZ ? '' : 'This device or browser can’t vibrate.', !CAN_BUZZ)}
+        canBuzz() ? '' : 'This device or browser can’t vibrate.', !canBuzz())}
     </section>
 
     <section class="sgroup" aria-labelledby="g-battle"><h3 id="g-battle">Battle</h3>
