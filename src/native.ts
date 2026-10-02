@@ -31,7 +31,11 @@ export async function initNative() {
   if (!isNativeApp()) return;
   document.documentElement.classList.add('native');
   addBundledFonts();
-  await Promise.all([initStorage(), initHaptics(), initBack()].map(p => p.catch(e => console.error('native setup', e))));
+  const parts = { storage: initStorage, haptics: initHaptics, back: initBack };
+  const ok = await Promise.all(Object.entries(parts).map(([name, fn]) =>
+    fn().then(() => `${name}=ok`, e => { console.error(`native ${name} failed`, e); return `${name}=failed`; })));
+  // The CI emulator check looks for this line in the device log.
+  console.log(`[sigilbound] app ready ${ok.join(' ')} screen=${current}`);
 }
 
 /* ---------- fonts ---------- */

@@ -66,6 +66,28 @@ jobs:
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
+  # Boot the APK in an Android emulator and check the game starts without errors.
+  android-check:
+    needs: android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sigilbound-android-debug
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run the app on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash -c 'adb install -r app-debug.apk && adb logcat -c && adb shell am start -n com.garionmartsch.sigilbound/.MainActivity && sleep 30 && adb logcat -d > logcat.txt; grep -E "Capacitor/Console|sigilbound|AndroidRuntime" logcat.txt | tail -n 60 > app-log.txt; cat app-log.txt; while IFS= read -r l; do echo "::notice title=app log::$l"; done < <(grep -E "sigilbound|Uncaught|Error" app-log.txt | head -n 20); grep -q "app ready storage=ok haptics=ok back=ok" app-log.txt && ! grep -qE "Uncaught|FATAL EXCEPTION" logcat.txt'
+
   ios:
     needs: android
     runs-on: macos-15
