@@ -93,13 +93,13 @@ const SUFFIXES: Record<BodyType, [string, string, string][]> = {
 };
 
 const BODY_LOOK: Record<BodyType, string> = {
-  brute: 'round, stocky brawler with short arms and a toothy grin',
-  beast: 'small four-legged creature with pointed ears and a lively stance',
-  avian: 'round little bird with spread wings, a crest and a small beak',
-  serpent: 'small coiled serpent with fin-shaped ears',
-  wisp: 'floating spirit with a teardrop body and one big eye',
-  golem: 'blocky little golem with heavy fists and a glowing core',
-  drake: 'young dragon hatchling with small horns and stubby wings',
+  brute: 'stocky, muscular brawler with clawed arms and a snarling jaw',
+  beast: 'lean four-legged predator with pointed ears and a prowling stance',
+  avian: 'sleek bird of prey with spread wings, a crest and a hooked beak',
+  serpent: 'coiled serpent with fin-shaped frills and a striking pose',
+  wisp: 'floating spirit with a teardrop body and one piercing eye',
+  golem: 'blocky, weathered golem with heavy fists and a glowing core',
+  drake: 'young dragon with swept horns and leathery wings',
 };
 
 /** Stat leanings per body: [hp, atk, spd] multipliers. */
@@ -158,7 +158,7 @@ export function generateCommons(perWheel = PER_WHEEL_ELEMENT, perSpecial = PER_S
       if (body === 'brute' || body === 'beast' || body === 'drake') sp.horns = body === 'beast' ? (r() < 0.4 ? 2 : 0) : 2;
       if (body === 'wisp') sp.eyes = 1;
       if (body === 'brute' && r() < 0.35) sp.spikes = true;
-      sp.look = `A ${th.adjective} ${BODY_LOOK[body]}${parts.length ? `, with ${parts.join(' and ')}` : ''}. ${cap(el)} element common beast.`;
+      sp.look = `${/^[aeiou]/i.test(th.adjective) ? 'An' : 'A'} ${th.adjective} ${BODY_LOOK[body]}${parts.length ? `, with ${parts.join(' and ')}` : ''}. ${cap(el)} element common beast.`;
       sp.evoLooks = [
         'Bigger and sturdier, with more pronounced features and a stronger elemental glow.',
         'A mature, imposing version with dramatic elemental effects around it and gold rune symbols orbiting it.',
