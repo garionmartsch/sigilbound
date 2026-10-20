@@ -79,17 +79,20 @@ iPhones only install apps signed with an Apple developer account. For your own p
 
 | Gesture | Keyboard | Action |
 |---|---|---|
-| Tap | `J` | Strike: quick, light damage, builds energy |
-| Swipe left or right | `K` | Slash: heavier hit along your swipe |
-| Swipe up | `I` | Special attack once energy is full; also breaks an enemy wind-up |
+| Tap | `J` | Quick shot at your target: light damage, builds energy |
+| Flick toward an enemy | `K` | Throw your beast's element. The direction picks the target; a faster flick hits harder |
+| Hold until the ring fills, then flick | `I` | Heavy throw. With full energy it's your Special, which also breaks an enemy wind-up |
 | Swipe down | `Space` | Parry: swipe when the closing ring turns gold to block and counter |
+| Tap an enemy, or its name at the top | `T` | Aim at that enemy |
 | Tap a portrait | `1`–`3` | Swap beasts |
+
+Spirits, birds and dragons throw back. Their shots fly at your beast: parry as one lands, or throw to knock it out of the air. Throwing rules (damage, cooldowns, charge time, which enemies throw) are in `src/throwing.ts`.
 
 ## What's in the game
 
 - **Tutorial:** new players get a short training fight where a coach teaches one move at a time (strike, slash, special, parry, swapping, reading matchups) while a ghost finger demonstrates each gesture. It can't be lost. A spotlight tour of the menus follows: a guaranteed-Rare first summon, feeding a card, how evolving works, then the campaign. It can be skipped at any point, resumes after a restart, and can be replayed from the home screen.
 - **Endless campaign:** nine elemental regions, each a winding trail of eight stages plus two side stages, ruled by that element's Legendary. Beyond the Nightfall, the Sigil Gate pits you against a Mythic; beating it opens the next Circle, the same world harder, with evolved rulers, forever. Stages earn up to three stars (win, lose no beast, beat par time); region star totals open chests, with an Epic card at 30 stars in Circle I and the region's Legendary after that. Cleared stages can be replayed for shards, gold and card drops. Each region opens with a short story, and each boss with a line of its own.
-- **Combat:** swipe gestures, parry timing, hit-stop and knockback, elemental specials, three-wave stages ending in a leader or a boss.
+- **Combat:** flick to throw your beast's element (fireballs, ice shards, thorn spears, boulders…), hold to charge heavy throws and Specials, parry timing, enemies that throw back, hit-stop and knockback, three-wave stages ending in a leader or a boss.
 - **Enemy groups:** the first few stages send one enemy at a time; after that waves bring two or three at once. Tap an enemy (or its chip at the top, or press T) to aim at it. Enemies take turns attacking, so every wind-up can be read and parried, and a parry's counter always goes back at whoever attacked. Side stage 1 of each region is a swarm.
 - **Bosses:** wardens, rulers and the Gate's guardian fight in phases (2, 3 and 4). Each new phase starts with a roar: the boss shakes off its ailments, speeds up and learns another signature move. **Smash** is a long charge that can't be parried; break it with a Special or by hitting hard enough while it charges (the BREAK meter). **Sweep** hits your whole team, benched beasts too, unless you parry it. **Barrage** is three quick strikes, each parried on its own. Each element names its moves (Pyre's are Kiln Breath, Ashfall and Ember Flurry), and the stage card lists a boss's moves and counters before you fight.
 - **Wardens:** nine boss-only beasts, one per element, that can never be summoned, dropped or won. Each region's own warden guards main stage 4, and side stage 2 holds a wandering warden of the element that beats the region.
@@ -116,6 +119,7 @@ src/
   status.ts         Status effect rules and tuning numbers
   regions.ts        The campaign's world: region names, stage names, story, rulers, colors
   campaign.ts       Campaign rules: stage plans, enemy groups, wardens, difficulty, unlocks, stars, chests (no page access, fully tested)
+  throwing.ts       Throwing rules: aiming, flick power, charging, which enemies throw (no page access, tested)
   bosses.ts         Boss rules: phases, signature moves and their names, pacing (no page access, tested)
   map.ts            The campaign map screen, stage cards, story cards and chests
   tutorial.ts       The first-time tutorial: coach, spotlight, lesson rules

@@ -9,7 +9,7 @@
  */
 
 /** Lessons inside the training fight, in order. */
-export const BATTLE_STEPS = ['b-tap', 'b-slash', 'b-special', 'b-parry', 'b-swap', 'b-matchup', 'b-finish'] as const;
+export const BATTLE_STEPS = ['b-tap', 'b-throw', 'b-special', 'b-parry', 'b-swap', 'b-matchup', 'b-finish'] as const;
 /** Menu tour steps, in order. */
 export const MENU_STEPS = ['m-summon', 'm-enhance', 'm-evolve', 'm-ready'] as const;
 
@@ -18,7 +18,7 @@ export type StepId = 'intro' | (typeof BATTLE_STEPS)[number] | (typeof MENU_STEP
 export const STEP_ORDER: StepId[] = ['intro', ...BATTLE_STEPS, ...MENU_STEPS, 'done'];
 
 /** How many times a lesson asks for its move before moving on. */
-export const REPS: Partial<Record<StepId, number>> = { 'b-tap': 3, 'b-slash': 2 };
+export const REPS: Partial<Record<StepId, number>> = { 'b-tap': 3, 'b-throw': 2 };
 
 export const isBattleStep = (id: string): boolean => (BATTLE_STEPS as readonly string[]).includes(id);
 export const isMenuStep = (id: string): boolean => (MENU_STEPS as readonly string[]).includes(id);

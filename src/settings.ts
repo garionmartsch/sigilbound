@@ -14,7 +14,7 @@ import { $, $$ } from './util';
  * opened from a fight it pauses the fight until it closes.
  */
 
-export const VERSION = '0.5.0';
+export const VERSION = '0.7.0';
 
 const sheet = $('#setSheet'), box = $('#setBox');
 let pausedFight = false;
@@ -81,7 +81,7 @@ function render() {
     </section>
 
     <section class="sgroup" aria-labelledby="g-battle"><h3 id="g-battle">Battle</h3>
-      ${seg('swipe', 'Swipe distance', [['short', 'Short'], ['normal', 'Normal'], ['long', 'Long']], 'How far your finger travels before a tap becomes a swipe.')}
+      ${seg('swipe', 'Flick distance', [['short', 'Short'], ['normal', 'Normal'], ['long', 'Long']], 'How far your finger travels before a tap becomes a flick.')}
       ${sw('relaxedParry', 'Relaxed parry timing', 'The gold parry window stays open longer.')}
       ${sw('numbers', 'Damage numbers')}
       ${sw('hints', 'Controls reminder', 'The line of gestures under the battle field.')}

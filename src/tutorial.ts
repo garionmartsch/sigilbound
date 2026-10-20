@@ -92,8 +92,8 @@ function enter(id: StepId) {
   if (t && b) {
     t.demo = null;
     if (id === 'b-tap') { t.enemyActs = false; t.demo = 'tap'; }
-    if (id === 'b-slash') t.demo = 'slash';
-    if (id === 'b-special') { const u = cur(); if (u) u.energy = 100; t.demo = 'up'; }
+    if (id === 'b-throw') t.demo = 'throw';
+    if (id === 'b-special') { const u = cur(); if (u) u.energy = 100; t.demo = 'charge'; }
     if (id === 'b-parry' && e) { t.enemyActs = true; e.windup = 1.6; e.state = 'idle'; e.timer = 1.2; t.demo = 'down'; }
     if (id === 'b-swap' && e) {
       t.enemyActs = false; e.state = 'idle'; b.swapCd = 0;
@@ -125,10 +125,10 @@ function handle(ev: GameEvent, data?: unknown) {
   const then = (text: string) => { note = { text, step: nextStep(id) }; advance(); };
   switch (id) {
     case 'b-tap':
-      if (ev === 'tap' && ++count >= reps) then('Quick strikes build energy for your special.');
+      if (ev === 'tap' && ++count >= reps) then('Quick shots build energy for your special.');
       break;
-    case 'b-slash':
-      if (ev === 'slash' && ++count >= reps) then('Slashes can also leave your element\'s mark on the enemy.');
+    case 'b-throw':
+      if (ev === 'throw' && ++count >= reps) then('Throws can also leave your element\'s mark on the enemy. A faster flick throws harder.');
       break;
     case 'b-special':
       if (ev === 'special') then('Your fireball left a Burn: damage over time. Specials always apply their element\'s effect.');
@@ -187,13 +187,13 @@ interface View {
 }
 
 const BATTLE: Record<string, (reps: number) => View> = {
-  'b-tap': reps => ({ title: 'Strike', text: 'Tap anywhere on the field to strike.', key: 'J', progress: `${count}/${reps}` }),
-  'b-slash': reps => ({ title: 'Slash', text: 'Swipe left or right across the field. Slashes hit harder than strikes.', key: 'K', progress: `${count}/${reps}` }),
-  'b-special': () => ({ title: 'Special attack', text: 'Your energy is full. Swipe up to unleash Cindermaw\'s special, Magma Bite.', key: 'I' }),
+  'b-tap': reps => ({ title: 'Quick shot', text: 'Tap anywhere on the field. Cindermaw flings a quick fire shot.', key: 'J', progress: `${count}/${reps}` }),
+  'b-throw': reps => ({ title: 'Throw', text: 'Flick from Cindermaw toward the enemy to throw. Throws hit harder than quick shots.', key: 'K', progress: `${count}/${reps}` }),
+  'b-special': () => ({ title: 'Special attack', text: 'Your energy is full. Press and hold until the ring fills, then flick toward the enemy to unleash Cindermaw\'s special, Magma Bite.', key: 'I' }),
   'b-parry': () => ({ title: 'Parry', text: 'The enemy shows a red ! as it winds up, and a ring closes on your beast. The moment the ring turns gold, swipe down.', key: 'Space' }),
   'b-swap': () => ({ title: 'Swap beasts', text: 'You fight with a team of three. Tap Tidecoil\'s portrait to swap it in.', key: '2', target: '#slots .slot[data-i="1"]' }),
   'b-matchup': () => ({ title: 'Read the matchup', text: 'See the ▼ on Tidecoil? Thorn beats Tide, so Tidecoil hits softer here. Cindermaw has ▲: Pyre beats Thorn for 1.5× damage. Swap back to Cindermaw.', key: '1', target: '#slots .slot[data-i="0"]' }),
-  'b-finish': () => ({ title: 'Finish it', text: 'Use everything: strikes, slashes, your special, and parries.' }),
+  'b-finish': () => ({ title: 'Finish it', text: 'Use everything: quick shots, throws, your special, and parries. Holding to charge without full energy makes a heavy throw.' }),
 };
 
 /** The control that leads out of the current screen toward home. */

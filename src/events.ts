@@ -5,7 +5,8 @@ import type { RarityKey } from './types';
  * tutorial listens, so the tutorial never has to reach into game internals.
  */
 export type GameEvent =
-  | 'tap' | 'slash' | 'special'   // player attacks that landed
+  | 'tap' | 'throw' | 'special'   // player attacks that landed (a charged heavy throw counts as a throw)
+  | 'shotDown'                    // player knocked an enemy shot out of the air
   | 'parry' | 'hurt'              // enemy strike was parried, or hit the player
   | 'swap'                        // data: new active slot index
   | 'trainingDone'                // player closed the training results

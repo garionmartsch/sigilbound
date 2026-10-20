@@ -1,3 +1,5 @@
+import { SHOT_SHAPE } from './throwing';
+import type { ElementKey } from './types';
 import { clamp, ease, ell, rand, rgba, type Ctx } from './util';
 
 /* ---------- battle effects ---------- */
@@ -159,4 +161,52 @@ export function drawVoid(c: Ctx, f: Fx){
   c.restore();
 }
 /** Drawing function for each effect type. */
-export const FXDRAW: Record<string, (c: Ctx, f: Fx) => void> ={slash:drawSlash,impact:drawImpact,charge:drawCharge,fireball:drawFireball,explosion:drawExplosion,vines:drawVines,wave:drawWave,shard:drawShard,bolt:drawBolt,boulder:drawBoulder,tornado:drawTornado,beam:drawBeam,void:drawVoid};
+/* ---------- thrown shots ---------- */
+/**
+ * A thrown elemental shot flying along a shallow arc from (x0,y0) to (x1,y1).
+ * Fields: el (element), color, r (size), arc (height of the arc), spin.
+ */
+export function shotPos(f: Fx, k = clamp(f.t / f.dur, 0, 1)) {
+  const x = f.x0 + (f.x1 - f.x0) * k, y = f.y0 + (f.y1 - f.y0) * k - Math.sin(Math.PI * k) * f.arc;
+  // Direction of travel, for pointed shapes.
+  const k2 = Math.min(1, k + 0.02), x2 = f.x0 + (f.x1 - f.x0) * k2, y2 = f.y0 + (f.y1 - f.y0) * k2 - Math.sin(Math.PI * k2) * f.arc;
+  return { x, y, ang: Math.atan2(y2 - y, x2 - x) };
+}
+const SHOT_COLS: Record<ElementKey, [string, string]> = {
+  pyre: ['#FFF1C4', '#FF7A3D'], tide: ['#E8FBFF', '#3E9ED6'], thorn: ['#E6F5B8', '#5E9A3A'], frost: ['#FFFFFF', '#8FD3E8'],
+  storm: ['#FFFDE0', '#E8D04A'], stone: ['#D9C29C', '#7A6246'], gale: ['#F2FFF8', '#9FDCC0'], radiant: ['#FFFFFF', '#FFE08A'], umbral: ['#E6D4FF', '#5B3A8C'],
+};
+export function drawShot(c: Ctx, f: Fx) {
+  const p = shotPos(f), r = f.r, el = f.el as ElementKey, [hi, lo] = SHOT_COLS[el] ?? ['#FFFFFF', f.color];
+  c.save(); c.translate(p.x, p.y);
+  // Soft glow in the element's color.
+  c.globalCompositeOperation = 'lighter';
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, r * 2.2); g.addColorStop(0, rgba(f.color, 0.55)); g.addColorStop(1, rgba(f.color, 0));
+  c.fillStyle = g; ell(c, 0, 0, r * 2.2, r * 2.2); c.fill();
+  c.globalCompositeOperation = 'source-over';
+  const shape = SHOT_SHAPE[el] ?? 'orb';
+  if (shape === 'orb') {
+    const o = c.createRadialGradient(-r * 0.3, -r * 0.3, 0, 0, 0, r); o.addColorStop(0, hi); o.addColorStop(0.55, f.color); o.addColorStop(1, lo);
+    c.fillStyle = o; ell(c, 0, 0, r, r); c.fill();
+    if (el === 'storm') { c.strokeStyle = '#FFFDE0'; c.lineWidth = 2; c.beginPath(); for (let i = 0; i < 3; i++) { const a = rand(0, 6.28); c.moveTo(0, 0); c.lineTo(Math.cos(a) * r * 1.6, Math.sin(a) * r * 1.6); } c.stroke(); }
+    if (el === 'umbral') { c.strokeStyle = rgba('#C9A6FF', 0.9); c.lineWidth = 2; ell(c, 0, 0, r * 1.35, r * 0.5); c.stroke(); }
+    if (el === 'tide') { c.fillStyle = 'rgba(255,255,255,.75)'; ell(c, -r * 0.35, -r * 0.35, r * 0.25, r * 0.25); c.fill(); }
+  } else if (shape === 'spear' || shape === 'lance' || shape === 'shard') {
+    c.rotate(p.ang);
+    const L = shape === 'shard' ? r * 1.5 : r * 2.3, W = shape === 'lance' ? r * 0.35 : r * 0.5;
+    const gr = c.createLinearGradient(-L, 0, L, 0); gr.addColorStop(0, lo); gr.addColorStop(1, hi);
+    c.fillStyle = gr; c.strokeStyle = rgba('#0C0810', 0.6); c.lineWidth = 1.5;
+    c.beginPath(); c.moveTo(L, 0); c.lineTo(0, -W); c.lineTo(-L * (shape === 'shard' ? 0.8 : 1), 0); c.lineTo(0, W); c.closePath(); c.fill(); c.stroke();
+  } else if (shape === 'rock') {
+    c.rotate(f.t * 9);
+    c.fillStyle = lo; c.strokeStyle = '#3E3122'; c.lineWidth = 2; c.beginPath();
+    for (let i = 0; i < 7; i++) { const a = i / 7 * Math.PI * 2, rr = r * (0.8 + 0.25 * Math.sin(i * 2.3)); i ? c.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : c.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+    c.closePath(); c.fill(); c.stroke(); c.fillStyle = hi; ell(c, -r * 0.25, -r * 0.3, r * 0.25, r * 0.18); c.fill();
+  } else if (shape === 'crescent') {
+    c.rotate(f.t * 18);
+    c.fillStyle = hi; c.beginPath(); c.arc(0, 0, r * 1.2, 0.3, Math.PI * 1.7); c.arc(r * 0.35, 0, r * 0.9, Math.PI * 1.7, 0.3, true); c.closePath(); c.fill();
+  }
+  c.restore();
+}
+
+export const FXDRAW: Record<string, (c: Ctx, f: Fx) => void> ={shot:drawShot,slash:drawSlash,impact:drawImpact,charge:drawCharge,fireball:drawFireball,explosion:drawExplosion,vines:drawVines,wave:drawWave,shard:drawShard,bolt:drawBolt,boulder:drawBoulder,tornado:drawTornado,beam:drawBeam,void:drawVoid};

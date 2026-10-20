@@ -15,7 +15,7 @@
     <button class="gear" id="btnSettings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8.1 4.6-.1-1.1 1.9-1.5-1.9-3.3-2.3.8a7.6 7.6 0 0 0-1.9-1.1L15.4 3h-3.8l-.4 2.4c-.7.3-1.3.6-1.9 1.1l-2.3-.8-1.9 3.3L7 10.5a7.6 7.6 0 0 0 0 2.2L5.1 14.2 7 17.5l2.3-.8c.6.5 1.2.8 1.9 1.1l.4 2.4h3.8l.4-2.4c.7-.3 1.3-.6 1.9-1.1l2.3.8 1.9-3.3-1.9-1.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
     <header class="brand">
       <h1>Sigilbound</h1>
-      <p>Summon · Swipe · Bind</p>
+      <p>Summon · Throw · Bind</p>
     </header>
     <div class="purse">
       <div><span>Soul shards</span><b id="hShards">0</b></div>
@@ -32,14 +32,15 @@
     <div class="howto">
       <h2>How to fight</h2>
       <dl>
-        <dt>Tap</dt><dd>Strike. Fast, light damage, builds energy.</dd>
-        <dt>Swipe</dt><dd>Slash left or right. Heavier hit.</dd>
-        <dt>Swipe up</dt><dd>Special, once energy is full. Breaks an enemy wind-up.</dd>
-        <dt>Swipe down</dt><dd>Parry. When an enemy winds up, a red ring closes on your beast. Swipe down once it turns gold to block the hit and counter.</dd>
+        <dt>Tap</dt><dd>Quick shot at your target. Fast, light damage, builds energy.</dd>
+        <dt>Flick</dt><dd>Throw your beast's element. Flick toward an enemy to aim at it; a faster flick hits harder.</dd>
+        <dt>Hold, then flick</dt><dd>Hold until the ring fills for a heavy throw. With full energy it's your Special, which also breaks an enemy wind-up.</dd>
+        <dt>Swipe down</dt><dd>Parry. When an attack is coming, a red ring closes on your beast. Swipe down once it turns gold to block the hit and counter.</dd>
+        <dt>Enemy shots</dt><dd>Spirits, birds and dragons throw back. Parry the shot as it lands, or throw to knock it out of the air.</dd>
         <dt>Portraits</dt><dd>Tap one to swap beasts mid-fight.</dd>
       </dl>
       <details class="echart"><summary>Element chart · strong hits do ×1.5</summary><table id="elemT"></table><p>Radiant and Umbral are strong against each other and neutral to everything else. Specials always apply their effect; slashes sometimes do. Enemies inflict effects too, and a parry blocks them. Combos: Soak + Shock doubles the shock, and Soak + Chill freezes at once.</p></details>
-      <div class="keys">Keyboard: <kbd>J</kbd> strike · <kbd>K</kbd> slash · <kbd>I</kbd> special · <kbd>Space</kbd> parry · <kbd>1</kbd>–<kbd>3</kbd> swap</div>
+      <div class="keys">Keyboard: <kbd>J</kbd> quick shot · <kbd>K</kbd> throw · <kbd>I</kbd> special / heavy · <kbd>Space</kbd> parry · <kbd>1</kbd>–<kbd>3</kbd> swap</div>
     </div>
   </section>
 
@@ -62,7 +63,7 @@
       <span class="bar energy"><i id="pEn"></i></span>
     </div>
     <div class="slots" id="slots"></div>
-    <div class="hint"><b>Tap</b> strike · <b>Swipe ↔</b> slash · <b>Swipe ↑</b> special · <b>Swipe ↓</b> parry</div>
+    <div class="hint"><b>Tap</b> shot · <b>Flick</b> throw · <b>Hold + flick</b> special · <b>Swipe ↓</b> parry</div>
     <div class="overlay" id="result" hidden><div class="box" id="resultBox"></div></div>
   </section>
 

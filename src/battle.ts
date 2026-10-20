@@ -3,7 +3,8 @@ import { drawMonster, drawSigil } from './render';
 import { newCard, persist, save, teamMembers } from './save';
 import { current, show } from './screens';
 import { SFX, buzz } from './sfx';
-import { FXDRAW, fbPos, ribbon, tornadoX, waveX, type Fx } from './fx';
+import { FXDRAW, drawShot, fbPos, ribbon, shotPos, tornadoX, waveX, type Fx } from './fx';
+import { ENEMY_SHOT, SHOOT_DOWN_GAIN, SHOOT_DOWN_MIN, THROWS, aimTarget, chargeAt, chargedKind, classifyFlick, flickPower, flightTime, isRanged, type ThrowKind } from './throwing';
 import { applyStatus, cleanse, damageDealtMult, damageTakenMult, drainFrom, rollDazeMiss, STATUS, STATUS_INFO, statusList, tempo, tickStatus, type StatusState } from './status';
 import type { Card, ElementKey, Species } from './types';
 import { prefs } from './prefs';
@@ -63,11 +64,13 @@ export interface Enemy {
   breakDmg?: number;
   /** Seconds left in a phase-change roar. */
   roar?: number;
+  /** This wind-up ends in a thrown shot rather than a hit (ranged enemies). */
+  shoots?: boolean;
 }
 type ParticleKind = 'spark' | 'ember' | 'drop' | 'leaf' | 'shard' | 'dust' | 'mote';
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; r: number; kind: ParticleKind; rot: number; vr: number }
 interface FloatText { x: number; y: number; txt: string; color: string; size: number; life: number; max: number }
-type ActKind = 'tap' | 'slash' | 'special';
+type ActKind = ThrowKind;
 
 export interface Battle {
   team: Unit[];
@@ -85,7 +88,9 @@ export interface Battle {
   /** Attack cooldown, swap cooldown, parry window and parry cooldown, in seconds. */
   cd: number; swapCd: number; parry: number; parryCd: number;
   /** An input made near the end of a cooldown, fired when it ends. */
-  buffered: { kind: ActKind; ang?: number } | null;
+  buffered: { kind: ActKind; o: ThrowOpts } | null;
+  /** Enemy shots in the air, flying at your beast. */
+  incoming: Fx[];
   fx: Fx[];
   /** Freeze-frame time remaining after a heavy hit. */
   hitstop: number;
@@ -108,7 +113,7 @@ export interface Battle {
 }
 
 /** Gesture the tutorial is demonstrating with a ghost finger. */
-export type Demo = 'tap' | 'slash' | 'up' | 'down';
+export type Demo = 'tap' | 'throw' | 'charge' | 'down';
 /** Rules the tutorial switches per lesson during the training fight. */
 export interface TrainingRules {
   /** The enemy winds up and attacks. */
@@ -157,7 +162,7 @@ export function startBattle(opts: {training?: boolean; plan?: StagePlan}={}){
   const cards=opts.training?TRAINING_TEAM:teamMembers();
   const team=cards.map(m=>{const st=statsOf(m);return {m,sp:SPECIES[m.sp],name:nameOf(m),evo:m.evo||0,skill:m.skill||1,hp:st.maxHp,maxHp:st.maxHp,atk:st.atk,energy:0,dead:false,fade:1,flash:0,st:{},dotAcc:0,dotT:0}});
   if(!team.length) return;
-  const b: Battle={team,active:0,stage:opts.plan?opts.plan.difficulty:0,plan:opts.plan,training:opts.training?{enemyActs:false,protectEnemy:true,demo:null}:undefined,wave:0,enemy:null,foes:[],hinted:[],cd:0,swapCd:0,parry:0,parryCd:0,buffered:null,fx:[],hitstop:0,flash:0,flashCol:'#FFFFFF',lunge:0,pSpawn:1,
+  const b: Battle={team,active:0,stage:opts.plan?opts.plan.difficulty:0,plan:opts.plan,training:opts.training?{enemyActs:false,protectEnemy:true,demo:null}:undefined,wave:0,enemy:null,foes:[],hinted:[],incoming:[],cd:0,swapCd:0,parry:0,parryCd:0,buffered:null,fx:[],hitstop:0,flash:0,flashCol:'#FFFFFF',lunge:0,pSpawn:1,
     parts:[],texts:[],trail:[],shake:0,time:0,over:false,earned:0,gold:0,drops:[],timers:[],
     embers:Array.from({length:26},()=>({x:Math.random(),y:Math.random(),v:rand(0.02,0.06),r:rand(0.8,2.2),ph:Math.random()*6}))};
   B=b;
@@ -210,7 +215,7 @@ function foeAt(x: number,y: number): Enemy|undefined{
   alive().forEach(f=>{const p=posOf(f), d=Math.hypot(x-p.x,y-(p.y-s*0.2*p.k)); if(d<s*1.05*p.k&&d<bd){bd=d;best=f}});
   return best;
 }
-/** Number of claw marks each body type leaves when slashing. */
+/** Number of claw marks each body type leaves when an enemy hits in melee. */
 const CLAWS: Record<string, number>={brute:3,wisp:2,serpent:1,avian:2,golem:1};
 /** Particle style for each element's bursts. */
 const PKIND: Record<ElementKey, ParticleKind>={pyre:'ember',tide:'drop',thorn:'leaf',frost:'shard',storm:'ember',stone:'dust',gale:'leaf',radiant:'ember',umbral:'mote'};
@@ -227,39 +232,84 @@ export function slashFx(x: number,y: number,ang: number,color: string,body: stri
   return fx({type:'slash',x,y,ang,color,n,len:s*2.3,w:s*(n===1?0.26:n===2?0.17:0.13),gap:s*0.3,bow:s*0.35*(Math.random()<.5?1:-1),dur:dur||0.42});
 }
 
-export function playerAct(kind: ActKind,ang?: number){const bt=B; if(!bt) return;
-  if(!bt||bt.over) return;
+/** Where a throw aims (the flick's direction) and how hard (from the flick's speed). */
+export interface ThrowOpts { dir?: { x: number; y: number }; power?: number }
+
+/**
+ * Your beast attacks. tap: a quick light shot at your target. throw: a flick,
+ * aimed by its direction. heavy: a charged throw. special: a charged throw
+ * with a full energy bar, your beast's signature attack.
+ */
+export function playerAct(kind: ActKind,o: ThrowOpts={}){const bt=B; if(!bt) return;
+  if(bt.over) return;
   if(bt.enemy?.dead){const nx=alive()[0]; if(nx) bt.enemy=nx}
-  const u=cur(), e=bt.enemy;
-  if(!u||u.dead||!e||e.dead||e.spawn<1||bt.pSpawn<1) return;
+  const u=cur();
+  if(!u||u.dead||bt.pSpawn<1) return;
   if(u.st.freeze){ if(Math.random()<0.3){const g0=geo(); ftext(g0.P.x,g0.P.y-g0.s*1.4,'Frozen!','#BFEFFF',16,0.6)} return; }
-  if(bt.cd>0){ if(bt.cd<0.3) bt.buffered={kind,ang}; return; }
-  if(kind==='special'&&u.energy<100) kind='slash';
+  if(bt.cd>0){ if(bt.cd<0.3) bt.buffered={kind,o}; return; }
+  if(kind==='special'&&u.energy<100) kind='heavy';
+  // An enemy shot in the air: any throw but a Special goes to knock it down.
+  if(kind!=='special'){const shot=bt.incoming.find(x=>x.dur-x.t>SHOOT_DOWN_MIN); if(shot){shootDown(u,kind,shot); return}}
+  const g=geo();
+  // The flick's direction picks who you hit.
+  if(o.dir&&bt.foes.length>1){const a=alive().filter(f=>f.spawn>=1); const i=aimTarget(g.P,o.dir,a.map(posOf)); if(i>=0&&a[i]!==bt.enemy){bt.enemy=a[i]; emit('target')}}
+  const e=bt.enemy;
+  if(!e||e.dead||e.spawn<1) return;
+  const power=o.power??1;
   let mult,cd,gain;
-  if(kind==='tap'){mult=0.45;cd=0.22;gain=7}
-  else if(kind==='slash'){mult=1;cd=0.45;gain=12}
-  else {mult=2.8*(1+0.12*((u.skill||1)-1));cd=1.1;gain=0;u.energy=0}
+  if(kind==='special'){mult=2.8*(1+0.12*((u.skill||1)-1));cd=1.1;gain=0;u.energy=0}
+  else {const T=THROWS[kind]; mult=T.mult*(kind==='throw'?power:1); cd=T.cd; gain=T.gain}
   bt.cd=cd; u.energy=Math.min(100,u.energy+gain);
   const em=elemMult(u.sp.el,e.sp.el);
   const dmg=Math.max(1,Math.round(u.atk*mult*em*rand(0.9,1.1)*damageDealtMult(u.st)*damageTakenMult(e.st)));
-  const g=geo(), col=ELEM[u.sp.el].color;
   if(kind==='special'){castSpecial(u,e,dmg,em);return}
   if(rollDazeMiss(u.st)){bt.lunge=1; SFX.play('guard'); ftext(g.E.x,g.E.y-g.s*0.6,'Miss','#B7A9C6',22,0.8); return}
-  bt.lunge=1;
-  if(kind==='tap'){
-    SFX.play('tap'); buzz(8);
-    fx({type:'impact',x:g.E.x+rand(-.35,.35)*g.s,y:g.E.y+rand(-.4,.2)*g.s,r:g.s*0.55,color:col,rot:Math.random(),dur:0.22});
-    bt.hitstop=0.03;
-  } else {
-    if(ang==null) ang=rand(-0.5,0.5)+(Math.random()<0.5?0:Math.PI);
-    slashFx(g.E.x,g.E.y-g.s*0.1,ang,col,u.sp.body,g.s); SFX.play('slash'); SFX.play('hit'); buzz(14);
-    const dx=Math.cos(ang),dy=Math.sin(ang);
-    for(let i=-2;i<=2;i++) elemBurst(g.E.x+dx*i*g.s*0.45,g.E.y-g.s*0.1+dy*i*g.s*0.45,u.sp.el,3,200,0.2);
-    bt.hitstop=0.07;
-  }
-  hitEnemy(dmg,em,kind,e);
-  if(kind==='slash'&&Math.random()<STATUS.hitChance.player) inflictOnEnemy(u,false,e);
-  emit(kind);
+  throwShot(u,e,kind,dmg,em,power);
+}
+/** The spot above your beast where throws leave its hands. */
+const launchPoint=(g: ReturnType<typeof geo>)=>({x:g.P.x+g.s*0.45,y:g.P.y-g.s*0.55});
+/** Send an elemental shot at an enemy; the damage lands when it arrives. */
+function throwShot(u: Unit,e: Enemy,kind: 'tap'|'throw'|'heavy',dmg: number,em: number,power: number){const bt=B; if(!bt) return;
+  const g=geo(), E=posOf(e), from=launchPoint(g), col=ELEM[u.sp.el].color, T=THROWS[kind];
+  bt.lunge=1; SFX.play(kind==='tap'?'tap':'slash'); buzz(kind==='heavy'?18:8);
+  if(kind==='heavy'){fx({type:'charge',x:g.P.x,y:g.P.y,r:g.s*1.4,color:col,dur:0.2}); SFX.play('charge')}
+  const dist=Math.hypot(E.x-from.x,E.y-from.y);
+  fx({type:'shot',x0:from.x,y0:from.y,x1:E.x,y1:E.y-g.s*0.15*E.k,arc:dist*(kind==='tap'?0.07:0.16),r:g.s*0.3*T.size,el:u.sp.el,color:col,
+    dur:flightTime(power)*(kind==='heavy'?1.2:kind==='tap'?0.85:1),
+    end:()=>{const b2=B; if(!b2||!b2.foes.includes(e)||e.dead) return;
+      fx({type:'impact',x:E.x,y:E.y-g.s*0.15*E.k,r:g.s*(kind==='tap'?0.55:kind==='heavy'?1.2:0.85)*E.k,color:col,rot:Math.random(),dur:kind==='tap'?0.22:0.3});
+      elemBurst(E.x,E.y,u.sp.el,kind==='tap'?4:kind==='heavy'?24:10,kind==='heavy'?400:240,0.3);
+      SFX.play('hit'); buzz(kind==='heavy'?40:kind==='tap'?6:14); b2.hitstop=kind==='tap'?0.03:kind==='heavy'?0.11:0.07;
+      if(kind==='heavy') shake(0.6);
+      hitEnemy(dmg,em,kind,e);
+      const chance=kind==='heavy'?Math.min(1,STATUS.hitChance.player*2):kind==='throw'?STATUS.hitChance.player:0;
+      if(!e.dead&&Math.random()<chance) inflictOnEnemy(u,false,e);
+      emit(kind==='heavy'?'throw':kind);
+    }});
+}
+/** Throw at an enemy shot in the air to knock it down before it lands. */
+function shootDown(u: Unit,kind: 'tap'|'throw'|'heavy',shot: Fx){const bt=B; if(!bt) return;
+  const T=THROWS[kind], g=geo(), from=launchPoint(g), dur=0.16;
+  const at=shotPos(shot,clamp((shot.t+dur)/shot.dur,0,1));
+  bt.cd=T.cd*0.8; bt.lunge=1; SFX.play('slash'); buzz(8);
+  fx({type:'shot',x0:from.x,y0:from.y,x1:at.x,y1:at.y,arc:8,r:g.s*0.3*T.size,el:u.sp.el,color:ELEM[u.sp.el].color,dur,
+    end:()=>{const b2=B; if(!b2) return; const i=b2.incoming.indexOf(shot); if(i<0) return;
+      b2.incoming.splice(i,1);
+      const p=shotPos(shot);
+      fx({type:'impact',x:p.x,y:p.y,r:g.s*0.8,color:'#FFE3A0',rot:Math.random(),dur:0.3});
+      burst(p.x,p.y,'#FFE3A0',24,340); elemBurst(p.x,p.y,shot.el,12,300);
+      ftext(p.x,p.y-g.s*0.5,'Shot down!','#FFE3A0',22,1);
+      u.energy=Math.min(100,u.energy+SHOOT_DOWN_GAIN); SFX.play('guard'); SFX.play('hit'); buzz([10,20,20]); b2.hitstop=0.06;
+      emit('shotDown');
+    }});
+}
+/** A ranged enemy throws its element at your beast. It lands when it arrives, unless parried or shot down. */
+function launchEnemyShot(e: Enemy){const bt=B; if(!bt) return;
+  const g=geo(), E=posOf(e);
+  e.lunge=1; SFX.play('slash');
+  const x0=E.x-g.s*0.5*E.k, y0=E.y-g.s*0.3*E.k, x1=g.P.x+g.s*0.15, y1=g.P.y-g.s*0.25;
+  bt.incoming.push({type:'shot',t:0,dur:ENEMY_SHOT.flight,x0,y0,x1,y1,arc:Math.hypot(x1-x0,y1-y0)*0.14,r:g.s*0.34*E.k,el:e.sp.el,color:ELEM[e.sp.el].color,from:e,ticked:false});
+  if(!bt.hinted.includes('incoming')){bt.hinted.push('incoming'); ftext(g.w/2,g.h*0.56,'Incoming! Parry it, or throw to shoot it down','#F0E8F5',Math.min(16,g.w/24),2.6)}
 }
 
 /* ---------- status effects in battle ---------- */
@@ -382,7 +432,7 @@ export function hitEnemy(dmg: number,em: number,kind: ActKind,e: Enemy|null=B?.e
   const E=posOf(e), el=u?u.sp.el:'pyre';
   e.hp-=dmg; e.flash=1; e.kb=kind==='tap'?0.45:1;
   elemBurst(E.x+rand(-10,10),E.y+rand(-10,10),el,kind==='tap'?5:10,kind==='tap'?160:260);
-  ftext(E.x+rand(-g.s*0.6,g.s*0.6),E.y-g.s*0.5,String(dmg),em>1?'#FFD98A':(em<1?'#B7A9C6':'#FFFFFF'),kind==='special'?36:(kind==='slash'?26:20));
+  ftext(E.x+rand(-g.s*0.6,g.s*0.6),E.y-g.s*0.5,String(dmg),em>1?'#FFD98A':(em<1?'#B7A9C6':'#FFFFFF'),kind==='special'?36:kind==='heavy'?30:kind==='throw'?26:20);
   if(em>1&&kind!=='tap') ftext(E.x,E.y-g.s*1.25*E.k,'Super effective','#E7BE6E',16,1);
   if(em<1&&kind!=='tap') ftext(E.x,E.y-g.s*1.25*E.k,'Resisted','#A898B9',15,0.9);
   // Hitting a charging boss hard enough breaks the charge.
@@ -430,7 +480,8 @@ export function enemyStrike(e: Enemy|null=B?.enemy??null, o: {mult?: number; all
     u.energy=Math.min(100,u.energy+22);
     const cdmg=Math.max(1,Math.round(u.atk*0.8*elemMult(u.sp.el,e.sp.el)));
     // The counter goes back at whoever attacked, even if you were aiming elsewhere.
-    bt.timers.push({t:0.12,fn:()=>{const u2=cur(); if(!e.dead&&u2&&!u2.dead){bt.lunge=1; slashFx(g.E.x,g.E.y-g.s*0.1,rand(-0.6,0.6),ELEM[u2.sp.el].color,u2.sp.body,g.s*E.k); hitEnemy(cdmg,1,'slash',e)}}});
+    bt.timers.push({t:0.12,fn:()=>{const u2=cur(); if(!e.dead&&u2&&!u2.dead){bt.lunge=1; const from=launchPoint(g0);
+      fx({type:'shot',x0:from.x,y0:from.y,x1:E.x,y1:E.y-g.s*0.15*E.k,arc:16,r:g.s*0.3,el:u2.sp.el,color:ELEM[u2.sp.el].color,dur:0.16,end:()=>{if(!e.dead) hitEnemy(cdmg,1,'throw',e)}})}}});
     emit('parry');
     return;
   }
@@ -546,7 +597,9 @@ function startWindup(e: Enemy){const bt=B; if(!bt) return;
   const act=e.kit?chooseAttack(e.kit,Math.random):'normal';
   const tp=e.kit?tempoFor(e.kit):{windup:1,rest:1};
   e.move=act==='normal'?null:act;
-  e.wlen=(e.move?MOVES[e.move].windup:e.windup)*tp.windup;
+  // Spirits, birds and dragons throw their ordinary attacks; the shot's flight adds warning time.
+  e.shoots=!e.move&&!bt.training&&isRanged(e.sp.body);
+  e.wlen=(e.move?MOVES[e.move].windup:e.windup*(e.shoots?ENEMY_SHOT.windup:1))*tp.windup;
   e.state='windup'; e.timer=e.wlen; e.ticked=false; e.breakDmg=0;
   if(e.move==='barrage') e.hitsLeft=MOVES.barrage.hits;
   SFX.play('warn');
@@ -564,6 +617,7 @@ function resolveAttack(e: Enemy){const bt=B; if(!bt) return;
   if(m==='sweep') enemyStrike(e,{mult:MOVES.sweep.mult,all:true});
   else if(m==='smash') enemyStrike(e,{mult:MOVES.smash.mult,unblockable:true});
   else if(m==='barrage') enemyStrike(e,{mult:MOVES.barrage.mult});
+  else if(e.shoots) launchEnemyShot(e);
   else enemyStrike(e);
   if(!B||e.dead) return;
   if(m==='barrage'&&(e.hitsLeft=(e.hitsLeft||1)-1)>0&&e.state==='windup'){e.wlen=MOVES.barrage.gap; e.timer=e.wlen; e.ticked=false; return}
@@ -583,7 +637,7 @@ export function updateBattle(dt){const bt=B; if(!bt) return;
   bt.lunge=Math.max(0,bt.lunge-dt/0.22);
   bt.pSpawn=Math.min(1,bt.pSpawn+dt/0.45);
   bt.parry=Math.max(0,bt.parry-dt); bt.parryCd=Math.max(0,bt.parryCd-dt);
-  if(bt.cd===0&&bt.buffered){const k=bt.buffered;bt.buffered=null;playerAct(k.kind,k.ang)}
+  if(bt.cd===0&&bt.buffered){const k=bt.buffered;bt.buffered=null;playerAct(k.kind,k.o)}
   bt.team.forEach(u=>{u.flash=Math.max(0,u.flash-dt*5); u.kb=Math.max(0,(u.kb||0)-dt*5); if(u.dead)u.fade=Math.max(0,u.fade-dt*1.6)});
   for(let i=bt.timers.length-1;i>=0;i--){const tm=bt.timers[i]; tm.t-=dt; if(tm.t<=0){bt.timers.splice(i,1); tm.fn(); if(!bt) return;}}
   // Status effects: count down, and apply damage over time in half-second pulses.
@@ -611,6 +665,15 @@ export function updateBattle(dt){const bt=B; if(!bt) return;
       if(st.curse) elemBurst(x+rand(-1,1)*g.s*0.5,y,'umbral',1,40,0.7);
     });
   }
+  // Enemy shots in flight: they land on your beast when they arrive (enemyStrike checks for a parry).
+  for(let i=bt.incoming.length-1;i>=0;i--){
+    const sh=bt.incoming[i], from=sh.from as Enemy;
+    if(from.dead||!bt.foes.includes(from)){bt.incoming.splice(i,1); continue}
+    sh.t+=dt;
+    if(Math.random()<0.6){const p=shotPos(sh); elemBurst(p.x,p.y,sh.el,1,40,0)}
+    if(!sh.ticked&&sh.dur-sh.t<=parryW()){sh.ticked=true; SFX.play('window')}
+    if(sh.t>=sh.dur){bt.incoming.splice(i,1); enemyStrike(from); if(!B) return;}
+  }
   for(const e of bt.foes){
     e.flash=Math.max(0,e.flash-dt*5); e.lunge=Math.max(0,e.lunge-dt/0.25); e.kb=Math.max(0,(e.kb||0)-dt*5);
     if(e.dead){e.fade=Math.max(0,e.fade-dt*1.4); continue}
@@ -620,15 +683,16 @@ export function updateBattle(dt){const bt=B; if(!bt) return;
     e.timer-=dt*tempo(e.st);
     if(e.state==='idle'&&e.timer<=0){
       // One attacker at a time, so every wind-up can be read and parried.
-      if(bt.foes.some(f=>f!==e&&!f.dead&&f.state==='windup')){e.timer=0.35; continue}
+      if(bt.incoming.length||bt.foes.some(f=>f!==e&&!f.dead&&f.state==='windup')){e.timer=0.35; continue}
       startWindup(e);
     }
-    else if(e.state==='windup'&&!e.ticked&&e.move!=='smash'&&e.timer<=parryW()){e.ticked=true;SFX.play('window')}
+    else if(e.state==='windup'&&!e.ticked&&e.move!=='smash'&&!e.shoots&&e.timer<=parryW()){e.ticked=true;SFX.play('window')}
     else if(e.state==='windup'&&e.timer<=0){resolveAttack(e); if(!B) return;}
   }
   const ended: Fx[]=[];
   bt.fx.forEach(f=>{
     f.t+=dt;
+    if(f.type==='shot'&&Math.random()<0.8){const p=shotPos(f); pushPart({x:p.x+rand(-3,3),y:p.y+rand(-3,3),vx:rand(-40,40),vy:rand(-40,20),life:rand(.2,.4),max:.4,color:pick(PCOLS[f.el as ElementKey]),r:rand(1.5,3.5),kind:PKIND[f.el as ElementKey],rot:rand(0,6),vr:rand(-9,9)})}
     if(f.type==='fireball'){const p=fbPos(f); for(let i=0;i<3;i++) pushPart({x:p.x+rand(-5,5),y:p.y+rand(-5,5),vx:rand(-50,50),vy:rand(-60,10),life:rand(.25,.5),max:.5,color:pick(PCOLS.pyre),r:rand(2.5,5.5),kind:'ember',rot:0,vr:0});}
     if(f.type==='tornado'&&f.t/f.dur<0.85){const xc=tornadoX(f); pushPart({x:xc+rand(-1,1)*f.s*0.8,y:f.base-rand(0,f.h),vx:rand(-140,140),vy:rand(-80,20),life:.5,max:.5,color:pick(PCOLS.gale),r:rand(2,4),kind:'leaf',rot:rand(0,6),vr:rand(-12,12)});}
     if(f.type==='void'&&f.t/f.dur<0.7){const an=Math.random()*Math.PI*2,R=f.r*1.6; pushPart({x:f.x+Math.cos(an)*R,y:f.y+Math.sin(an)*R,vx:-Math.cos(an)*R*2.2,vy:-Math.sin(an)*R*2.2,life:.42,max:.42,color:pick(PCOLS.umbral),r:rand(2,4),kind:'mote',rot:0,vr:0});}
@@ -645,22 +709,28 @@ export function updateBattle(dt){const bt=B; if(!bt) return;
 
 
 /**
- * A ghost finger that loops the gesture the tutorial is teaching:
- * a pulsing tap, a sideways slash, a swipe up, or a swipe down beside your beast.
+ * A ghost finger that loops the gesture the tutorial is teaching: a pulsing
+ * tap, a flick from your beast toward the enemy, a hold-then-flick, or a swipe
+ * down beside your beast.
  */
 function drawDemo(c: CanvasRenderingContext2D, g: ReturnType<typeof geo>, demo: Demo, t: number){
-  const period=1.6, p=(t%period)/period, s=g.s;
+  const charge=demo==='charge', period=charge?2.4:1.6, p=(t%period)/period, s=g.s;
   const cx=g.w*0.5, cy=g.h*0.5;
   let x0=cx, y0=cy, x1=cx, y1=cy;
-  if(demo==='slash'){x0=cx-s*1.3; y0=cy+s*0.15; x1=cx+s*1.3; y1=cy-s*0.2}
-  else if(demo==='up'){x0=cx+s*0.4; y0=cy+s*1.1; x1=cx+s*0.4; y1=cy-s*1.1}
+  if(demo==='throw'||charge){x0=g.P.x+s*0.2; y0=g.P.y-s*0.1; x1=x0+(g.E.x-x0)*0.55; y1=y0+(g.E.y-y0)*0.55}
   else if(demo==='down'){x0=g.P.x+s*1.7; y0=g.P.y-s*1.5; x1=g.P.x+s*1.7; y1=g.P.y+s*0.1}
   const move=demo!=='tap';
-  // 0-0.15 fade in, 0.15-0.6 act, 0.6-1 fade out
-  const act=clamp((p-0.15)/0.45,0,1), k=ease(act);
+  // Timeline: fade in, (hold to charge), act, fade out.
+  const hold=charge?0.45:0, a0=0.15+hold, a1=a0+(charge?0.2:0.45);
+  const act=clamp((p-a0)/(a1-a0),0,1), k=ease(act);
   const x=move?x0+(x1-x0)*k:x0, y=move?y0+(y1-y0)*k:y0;
-  const alpha=p<0.15?p/0.15:(p>0.75?clamp((1-p)/0.25,0,1):1);
+  const alpha=p<0.15?p/0.15:(p>0.8?clamp((1-p)/0.2,0,1):1);
   c.save(); c.globalAlpha=alpha*0.9;
+  if(charge&&p>=0.15&&p<a0){
+    // The ring filling while the finger holds still.
+    const f=clamp((p-0.15)/hold,0,1); c.lineWidth=5; c.strokeStyle='rgba(255,236,190,0.85)';
+    c.beginPath(); c.arc(x0,y0,s*0.6,-Math.PI/2,-Math.PI/2+Math.PI*2*f); c.stroke();
+  }
   if(move&&act>0){
     const tx=x0+(x1-x0)*Math.max(0,k-0.35), ty=y0+(y1-y0)*Math.max(0,k-0.35);
     const gr=c.createLinearGradient(tx,ty,x,y); gr.addColorStop(0,'rgba(231,190,110,0)'); gr.addColorStop(1,'rgba(255,236,190,0.85)');
@@ -671,7 +741,7 @@ function drawDemo(c: CanvasRenderingContext2D, g: ReturnType<typeof geo>, demo: 
     c.strokeStyle=`rgba(255,236,190,${1-act})`; c.lineWidth=3;
     ell(c,x,y,s*(0.25+act*0.9),s*(0.25+act*0.9)); c.stroke();
   }
-  const press=!move&&act>0&&act<0.3?0.8:1;
+  const press=(!move&&act>0&&act<0.3)||(charge&&p>=0.15&&p<a0)?0.8:1;
   c.fillStyle='rgba(231,190,110,0.28)'; ell(c,x,y,s*0.34*press,s*0.34*press); c.fill();
   c.fillStyle='rgba(255,246,225,0.92)'; c.shadowColor='#E7BE6E'; c.shadowBlur=14;
   ell(c,x,y,s*0.16*press,s*0.16*press); c.fill();
@@ -768,9 +838,11 @@ export function drawBattle(){const bt=B; if(!bt) return;
     }
     if(u.energy>=100&&!u.dead){c.strokeStyle=rgba('#E7BE6E',0.35+0.25*Math.sin(t*6));c.lineWidth=2;ell(c,g.P.x,g.P.y,s*1.15,s*1.15);c.stroke();}
   }
-  const e=attacker;
-  if(e&&u&&!u.dead){
-    const pr=clamp(1-e.timer/e.wlen,0,1);
+  // What's about to hit you: a wind-up, or a shot in the air.
+  const inc=bt.incoming[0];
+  const threat=attacker&&!attacker.shoots?{left:attacker.timer,len:attacker.wlen,move:attacker.move}:inc?{left:inc.dur-inc.t,len:inc.dur,move:null}:null;
+  if(threat&&u&&!u.dead){
+    const e=threat, pr=clamp(1-e.left/e.len,0,1);
     if(e.move==='smash'){
       // Unblockable: the ring never turns gold, and a cross marks it.
       c.lineWidth=3; c.strokeStyle='rgba(255,59,78,0.6)'; c.setLineDash([4,6]); ell(c,g.P.x,g.P.y,s*1.05,s*1.05); c.stroke(); c.setLineDash([]);
@@ -778,7 +850,7 @@ export function drawBattle(){const bt=B; if(!bt) return;
       const xr=s*0.22, xx=g.P.x+s*1.25, xy=g.P.y-s*1.1; c.lineWidth=4; c.strokeStyle='#FF3B4E';
       c.beginPath(); c.moveTo(xx-xr,xy-xr); c.lineTo(xx+xr,xy+xr); c.moveTo(xx+xr,xy-xr); c.lineTo(xx-xr,xy+xr); c.stroke();
     } else {
-      const open=e.timer<=parryW();
+      const open=e.left<=parryW();
       c.lineWidth=open?3:2; c.strokeStyle=open?'rgba(231,190,110,0.95)':'rgba(231,190,110,0.5)'; c.setLineDash(open?[]:[4,6]);
       ell(c,g.P.x,g.P.y,s*1.05,s*1.05); c.stroke(); c.setLineDash([]);
       c.lineWidth=3+pr*2; c.strokeStyle=open?`rgba(255,214,130,${0.6+0.4*pr})`:`rgba(224,69,90,${0.35+0.6*pr})`;
@@ -790,6 +862,8 @@ export function drawBattle(){const bt=B; if(!bt) return;
       }
     }
   }
+  bt.incoming.forEach(sh=>drawShot(c,sh));
+  drawHoldCharge(c,g,u,t);
   bt.fx.forEach(fo=>{const d=FXDRAW[fo.type]; if(d) d(c,fo)});
   if(bt.training?.demo&&!bt.over) drawDemo(c,g,bt.training.demo,bt.time);
   if(bt.trail.length>1){
@@ -851,7 +925,7 @@ export function updateHud(){const bt=B; if(!bt) return;
   renderFoes(bt);
   if(u){setText(hud.pName,u.name); setText(hud.pLvl,'Lv '+u.m.lvl); setText(hud.pEl,ELEM[u.sp.el].name); hud.pEl.className='chip '+u.sp.el;
     hud.pHp.style.width=(100*u.hp/u.maxHp)+'%'; setText(hud.pHpT,`${Math.ceil(u.hp)} / ${u.maxHp}`);
-    hud.pEn.style.width=u.energy+'%'; const rdy=u.energy>=100; hud.pPanel.classList.toggle('ready',rdy); setText(hud.eReady,rdy?`${u.sp.special} ready · swipe up`:Math.floor(u.energy)+'%');}
+    hud.pEn.style.width=u.energy+'%'; const rdy=u.energy>=100; hud.pPanel.classList.toggle('ready',rdy); setText(hud.eReady,rdy?`${u.sp.special} ready · hold, then flick`:Math.floor(u.energy)+'%');}
   $$<HTMLButtonElement>('#slots .slot').forEach((b,i)=>{const x=bt.team[i]; b.classList.toggle('active',i===bt.active); b.classList.toggle('cool',bt.swapCd>0); b.disabled=x.dead;
     (b.querySelector('i') as HTMLElement).style.width=(100*x.hp/x.maxHp)+'%'; (b.querySelector('canvas') as HTMLCanvasElement).dataset.dead=x.dead?'1':'';
     const sb=b.querySelector('.sbadge'); if(sb&&e){const m=elemMult(x.sp.el,e.sp.el); const t=m>1?'▲':(m<1?'▼':''); if(sb.textContent!==t){sb.textContent=t; sb.className='sbadge '+(m>1?'good':'bad')}}});
@@ -863,41 +937,76 @@ export function updateHud(){const bt=B; if(!bt) return;
 }
 
 /* ---------- input ---------- */
-/** The touch or mouse press currently being tracked as a gesture. */
-let ptr: {id: number; x0: number; y0: number; x: number; y: number; fired: boolean}|null=null;
+/**
+ * The touch or mouse press being tracked. A quick tap fires a light shot (or
+ * picks a new target when it lands on another enemy). A flick throws, aimed
+ * by its direction; straight down parries. Holding still first charges a
+ * heavy throw, or the Special when energy is full.
+ */
+let ptr: {id: number; x0: number; y0: number; x: number; y: number; fired: boolean; t0: number; charge: number; moved: boolean;
+  samples: {x: number; y: number; t: number}[]}|null=null;
 export function local(ev: PointerEvent){const r=field.getBoundingClientRect();return {x:ev.clientX-r.left,y:ev.clientY-r.top}}
-export function gesture(dx: number,dy: number){
-  const vert=Math.abs(dy)>Math.abs(dx)*1.1;
-  const ang=Math.atan2(dy,dx);
-  if(vert&&dy<0) playerAct('special',ang);
-  else if(vert&&dy>0) parry();
-  else playerAct('slash',ang);
+/** How charged the press is right now; it only builds while the finger stays still. */
+function holdCharge(): number{
+  if(!ptr||ptr.fired) return 0;
+  if(!ptr.moved) ptr.charge=chargeAt((performance.now()-ptr.t0)/1000);
+  return ptr.charge;
+}
+/** The ring that fills around your beast while you hold. */
+function drawHoldCharge(c: CanvasRenderingContext2D, g: ReturnType<typeof geo>, u: Unit|undefined, t: number){
+  const k=holdCharge(); if(!k||!u||u.dead) return;
+  const col=ELEM[u.sp.el].color, r=g.s*1.25, full=k>=1, special=full&&u.energy>=100;
+  c.save(); c.lineCap='round';
+  c.lineWidth=5; c.strokeStyle=rgba(col,0.25); ell(c,g.P.x,g.P.y,r,r); c.stroke();
+  c.lineWidth=full?7:5; c.strokeStyle=full?(special?'#FFE3A0':col):rgba(col,0.9); c.shadowColor=col; c.shadowBlur=full?18+8*Math.sin(t*14):8;
+  c.beginPath(); c.arc(g.P.x,g.P.y,r,-Math.PI/2,-Math.PI/2+Math.PI*2*k); c.stroke();
+  if(full){c.shadowBlur=0; c.font=`700 ${Math.round(g.s*0.26)}px 'Sigil UI', 'Barlow Semi Condensed', sans-serif`; c.textAlign='center'; c.fillStyle=special?'#FFE3A0':'#F0E8F5';
+    c.fillText(special?`${u.sp.special}! Flick to throw`:'Heavy throw! Flick',g.P.x,g.P.y+r+g.s*0.32)}
+  c.restore();
+  if(Math.random()<0.4*k) elemBurst(g.P.x+rand(-1,1)*r,g.P.y+rand(-1,1)*r,u.sp.el,1,30,-0.2);
+}
+/** A finished flick: parry if it went straight down, otherwise throw along it. */
+function flick(dx: number,dy: number,speed: number,charge: number){
+  if(classifyFlick(dx,dy)==='parry'){parry(); return}
+  const u=cur();
+  playerAct(charge>=1?chargedKind(u?.energy??0):'throw',{dir:{x:dx,y:dy},power:flickPower(speed)});
+}
+/** Finger speed over the last moments of the gesture, in pixels per millisecond. */
+function speedOf(q: NonNullable<typeof ptr>){
+  const now=q.samples[q.samples.length-1]; if(!now) return 0;
+  const past=q.samples.find(p=>now.t-p.t<=90)??q.samples[0];
+  const dt=Math.max(8,now.t-past.t); return Math.hypot(now.x-past.x,now.y-past.y)/dt;
 }
 field.addEventListener('pointerdown',ev=>{const bt=B; if(!bt) return;
-  if(!bt||bt.over) return; ev.preventDefault();
+  if(bt.over) return; ev.preventDefault();
   try{field.setPointerCapture(ev.pointerId)}catch(e){}
-  const p=local(ev);
-  ptr={id:ev.pointerId,x0:p.x,y0:p.y,x:p.x,y:p.y,fired:false};
+  const p=local(ev), t=performance.now();
+  ptr={id:ev.pointerId,x0:p.x,y0:p.y,x:p.x,y:p.y,fired:false,t0:t,charge:0,moved:false,samples:[{x:p.x,y:p.y,t}]};
   bt.trail.push({x:p.x,y:p.y,t:bt.time});
 });
 field.addEventListener('pointermove',ev=>{const bt=B; if(!bt) return;
-  if(!ptr||ev.pointerId!==ptr.id||!bt) return;
-  const p=local(ev); ptr.x=p.x; ptr.y=p.y;
+  if(!ptr||ev.pointerId!==ptr.id) return;
+  const p=local(ev), t=performance.now(); ptr.x=p.x; ptr.y=p.y;
+  ptr.samples.push({x:p.x,y:p.y,t}); if(ptr.samples.length>12) ptr.samples.shift();
   bt.trail.push({x:p.x,y:p.y,t:bt.time});
   const u=cur(); if(u&&Math.random()<0.5) elemBurst(p.x,p.y,u.sp.el,1,50,0.1);
-  if(!ptr.fired){const dx=p.x-ptr.x0,dy=p.y-ptr.y0; if(Math.hypot(dx,dy)>=swipeDistances(prefs).swipe){ptr.fired=true;gesture(dx,dy)}}
+  const dx=p.x-ptr.x0,dy=p.y-ptr.y0, d=Math.hypot(dx,dy), dist=swipeDistances(prefs);
+  if(!ptr.moved&&d>=dist.tap){holdCharge(); ptr.moved=true}
+  if(!ptr.fired&&d>=dist.swipe){ptr.fired=true; flick(dx,dy,speedOf(ptr),ptr.charge)}
 });
 export function release(ev: PointerEvent){
   if(!ptr||ev.pointerId!==ptr.id) return;
-  const q=ptr; ptr=null;
+  const charge=holdCharge(), q=ptr; ptr=null;
   if(ev.type==='pointercancel'||q.fired) return;
   const dx=q.x-q.x0, dy=q.y-q.y0;
   if(Math.hypot(dx,dy)<swipeDistances(prefs).tap){
-    // Tapping a different enemy aims at it instead of striking.
+    // A full charge released in place throws at your target.
+    if(charge>=1){playerAct(chargedKind(cur()?.energy??0)); return}
+    // Tapping a different enemy aims at it instead of shooting.
     const f=B&&B.foes.length>1?foeAt(q.x0,q.y0):undefined;
     if(f&&f!==B?.enemy){setTarget(f); return}
     playerAct('tap');
-  } else gesture(dx,dy);
+  } else flick(dx,dy,speedOf(q),charge);
 }
 $('#eFoes').addEventListener('click',ev=>{const b=(ev.target as Element).closest<HTMLElement>('[data-f]'); const f=b&&B?.foes[Number(b.dataset.f)]; if(f) setTarget(f)});
 field.addEventListener('pointerup',release); field.addEventListener('pointercancel',release);
@@ -906,8 +1015,8 @@ document.addEventListener('keydown',ev=>{const bt=B; if(!bt) return;
   if(current!=='battle'||!bt||ev.repeat||!$('#setSheet').hidden) return;
   const k=ev.key.toLowerCase();
   if(k==='j'||k==='f') playerAct('tap');
-  else if(k==='k'||k==='d') playerAct('slash');
-  else if(k==='i'||k==='arrowup') {ev.preventDefault(); playerAct('special');}
+  else if(k==='k'||k==='d') playerAct('throw');
+  else if(k==='i'||k==='arrowup') {ev.preventDefault(); playerAct(chargedKind(cur()?.energy??0));}
   else if(k===' '||k==='l'||k==='arrowdown'){ev.preventDefault(); parry();}
   else if(['1','2','3'].includes(k)) swapTo(+k-1);
   else if(k==='t'||k==='tab'){ev.preventDefault(); const a=alive(); if(a.length>1){const i=a.indexOf(bt.enemy!); setTarget(a[(i+1)%a.length])}}
